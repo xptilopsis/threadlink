@@ -156,6 +156,7 @@ COUNT_MIN = {
     "part_params": 30,
     "boms": 1,
     "git_commits": 3,
+    "trace_links": 30,
 }
 
 # User.role 冻结职能枚举（T2.4，以 PRD §3 为权威）

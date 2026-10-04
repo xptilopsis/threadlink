@@ -67,3 +67,50 @@ D2 B 段开工前的前置核验（只读）发现：**字典 §6 SupplierPart �
 - 正向：字典恢复自洽，`SupplierPart.lifecycle_status` 可作为 B 段 model 字段直接生成；渠道级规则（D6）有字段承载。
 - 成本：引入一次 post-freeze 文档修订；已以「仅补录不删改」与独立小提交隔离，降低对既有冻结内容的影响。
 - 留痕：补录依据、键名核验、枚举默认值、全量排查表均固化于本 ADR；后续实现注记追加于 §5。
+## 附：B 段实现注记（2026-10-04）
+
+### A. on_delete 决策（字典逐条写明，无未决项）
+
+| 关系 | on_delete |
+| --- | --- |
+| `Project.created_by` / `Bom.created_by` / `ECN.requested_by` → User | PROTECT |
+| `BomItem.part` / `InventoryLot.part` / `WorkOrder.bom` / `PurchaseOrder.supplier` → 目标 | PROTECT |
+| 各 `*.project`（Part/Supplier/Requirement/Bom/InventoryLot/WorkOrder/PurchaseOrder/TestCase/TestRun/ECN/Document/GitRepo/GitCommit/TraceLink/AgentRun）→ Project | CASCADE |
+| `PartParam.part` / `RequirementParam.requirement` / `BomItem.bom` / `BomItem.parent_item` / `TestRun.test_case` / `ECNImpact.ecn` / `GitCommit.repo` | CASCADE |
+| `SupplierPart.supplier` / `SupplierPart.part` | CASCADE |
+| `Requirement.agent_run` / `ECN.agent_run` / `TraceLink.agent_run` → AgentRun | SET_NULL |
+| `Requirement.confirmed_by` / `WorkOrder.created_by` / `TestRun.tester` / `ECN.approved_by` / `Document.uploaded_by` / `TraceLink.confirmed_by` / `TraceLink.created_by` / `AgentRun.confirmed_by` → User | SET_NULL |
+
+### B. 字段级歧义与处置
+
+- **`temperature`**：字典 §22 为 `numeric(3,2)`，`interface_contract.md` §6 与 `schemas` 为 `float`。按「字典为唯一事实来源」落为 `DecimalField(max_digits=3, decimal_places=2)`。
+- **枚举 choices**：`agent_name` / `status` / `relation_type` / `source` / `source_type` / `operator` / `priority` / `lifecycle_status` 的 choices 统一由 `schemas/agent_outputs.py` 对应枚举经 `enum_choices()` 生成，未在 models 重写。
+- **`ECNImpact.affected_type`**：按指令从 `EntityType`（13 值）生成 choices；字典 §17 列出业务子集（`bom_item`/`inventory_lot`/`purchase_order`/`test_case`/`part`）。二者为子集关系，本次采用 `EntityType`（superset），D 段如需收紧按业务限制。
+- **金额 / 数量**：一律 `DecimalField(max_digits=18, decimal_places=4)`（字典 §0）。
+- **时间戳**：`created_at` / `updated_at` 用 `default=timezone.now`（非 `auto_now_add`/`auto_now`），以便加载器保留 fixture 时间戳。
+
+### C. 业务编号
+
+- 自动前缀、scope、重试、例外同 ADR-0006 §2。
+- `BomItem` 无 `project` FK（字典 §10），故 project 级唯一性由编号器经 `bom__project` 解析 + 人工预检保证；DB 层以 `UniqueConstraint(bom, item_no)` 兜底（项目级唯一蕴含 BOM 级唯一，不误拒）。
+- `InventoryLot.serial_number` / `GitCommit.sha` 人工直写，不继承 `NumberedModel`。
+
+### D. 迁移结构
+
+`makemigrations` 自动将 `AgentRun.project` 拆到 `agents 0002`，形成无环 DAG：`core 0001 → agents 0001 → core 0002 → agents 0002 → traceability 0001`。
+
+### E. 加载顺序偏差（种子导入）
+
+指令顺序中 `project` 在 `users` 前、`agent_runs` 最后，但 `Project.created_by` 与 `Requirement`/`ECN`/`TraceLink.agent_run` 的 FK 依赖要求先建 User / AgentRun。实际顺序调整为：`users → project → agent_runs → parts → …`（其余保持指令相对顺序）。`fixtures` 与 `rules` 未改。
+
+### F. Admin 字段偏差
+
+指令 §3 提及 Supplier 的 `rating` / `lead_time_days`，但字典 §5 Supplier 无此二字段（`lead_time_days` 属 `SupplierPart`）。`SupplierAdmin` 按字典实际字段实现：`code` / `name` / `status` / `contact_name` + search/filter + `SupplierPart` inline。
+
+### G. 验证结果
+
+- 迁移：`check` 0 issues；`showmigrations` 全部 `[X]`。
+- 种子：`load_demo_seed --flush` 计数 `parts 20 / requirements 5 / test_cases 10 / test_runs 12 / suppliers 3 / purchase_orders 5 / inventory_lots 3 / ecns 2 / trace_links 39 / git_commits 3`（另 `agent_runs 5 / part_params 36 / requirement_params 12 / supplier_parts 13 / bom_items 16 / ecn_impacts 8 / documents 5 / git_repos 1`）；无 `--flush` 复跑幂等。
+- 认证态 Admin：`/admin/`、`/admin/core/project/`、`/admin/core/part/`、`/admin/core/supplier/` 均 200。
+- 编号实测：现有 20 个 Part 下新建自动编号 `PART-021`；手填重复抛 `NumberingError`。
+- `validate_seed.py` 仍 OK（fixtures 未改）；`compileall -q core traceability agents` 通过；`pytest -q` 6 passed。

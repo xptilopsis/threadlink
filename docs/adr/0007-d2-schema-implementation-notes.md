@@ -81,10 +81,12 @@ D2 B 段开工前的前置核验（只读）发现：**字典 §6 SupplierPart �
 | `Requirement.agent_run` / `ECN.agent_run` / `TraceLink.agent_run` → AgentRun | SET_NULL |
 | `Requirement.confirmed_by` / `WorkOrder.created_by` / `TestRun.tester` / `ECN.approved_by` / `Document.uploaded_by` / `TraceLink.confirmed_by` / `TraceLink.created_by` / `AgentRun.confirmed_by` → User | SET_NULL |
 
+**D2 收口抽查（2026-10-04）**：上表**全部为字典各字段说明的明文**，无原则推导误植。逐字抽查：`Project.created_by`（§2「FK → User，创建人（on_delete=PROTECT）」）、`Bom.created_by`（§9「FK → User（PROTECT）」）、`ECN.requested_by`（§16「FK → User（PROTECT）」）、`BomItem.part`（§10「FK → Part（PROTECT，BOM 展开必需）」）、`InventoryLot.part`（§11「FK → Part（PROTECT）」）、`WorkOrder.bom`（§12「FK → Bom（PROTECT）」）、`PurchaseOrder.supplier`（§13「FK → Supplier（PROTECT）」）、`Requirement.confirmed_by`（§7「FK → User（SET NULL）」）、`TestRun.tester`（§15「FK → User（SET NULL）」）、`ECN.approved_by`（§16「FK → User（SET NULL）」）、`TraceLink.created_by`（§18「FK → User（SET NULL）」）——**11/11 逐字一致，无改动**。
+
 ### B. 字段级歧义与处置
 
-- **`temperature`**：字典 §22 为 `numeric(3,2)`，`interface_contract.md` §6 与 `schemas` 为 `float`。按「字典为唯一事实来源」落为 `DecimalField(max_digits=3, decimal_places=2)`。
-- **枚举 choices**：`agent_name` / `status` / `relation_type` / `source` / `source_type` / `operator` / `priority` / `lifecycle_status` 的 choices 统一由 `schemas/agent_outputs.py` 对应枚举经 `enum_choices()` 生成，未在 models 重写。
+- **`temperature`**：字典 §22 为 `numeric(3,2)`（模型 `agents.AgentRun.temperature`），`interface_contract.md` §6 与 `schemas` 为 `float`。按「字典为唯一事实来源」落为 `DecimalField(max_digits=3, decimal_places=2)`（上限 ±9.99）。**域核验（D2 收口）**：用途为 LLM 采样温度，`interface_contract.md` §6 明确 `0.0 ~ 2.0`；fixture 实际取值 `0.0`/`0.1`/`0.2`，域为 `[0,2]`，**不含 |x| ≥ 10**，`(3,2)` 宽度足够，**保留、无改动**。
+- **枚举 choices**：`agent_name` / `status` / `relation_type` / `source` / `source_type` / `operator` / `priority` 及 **`SupplierPart.lifecycle_status`**（渠道级四值）由 `schemas/agent_outputs.py` 对应枚举经 `enum_choices()` 生成；**`Part.lifecycle_status`（物料级）为例外**——物料级须覆盖规则消费的 `obsolete`/`discontinued`，故新增 `core.models.PartLifecycleStatus = {active, nrnd, eol, obsolete, discontinued}`（superset），与渠道级四值**拆分、互不替代**（D2 收口）。
 - **`ECNImpact.affected_type`**：按指令从 `EntityType`（13 值）生成 choices；字典 §17 列出业务子集（`bom_item`/`inventory_lot`/`purchase_order`/`test_case`/`part`）。二者为子集关系，本次采用 `EntityType`（superset），D 段如需收紧按业务限制。
 - **金额 / 数量**：一律 `DecimalField(max_digits=18, decimal_places=4)`（字典 §0）。
 - **时间戳**：`created_at` / `updated_at` 用 `default=timezone.now`（非 `auto_now_add`/`auto_now`），以便加载器保留 fixture 时间戳。
@@ -92,7 +94,7 @@ D2 B 段开工前的前置核验（只读）发现：**字典 §6 SupplierPart �
 ### C. 业务编号
 
 - 自动前缀、scope、重试、例外同 ADR-0006 §2。
-- `BomItem` 无 `project` FK（字典 §10），故 project 级唯一性由编号器经 `bom__project` 解析 + 人工预检保证；DB 层以 `UniqueConstraint(bom, item_no)` 兜底（项目级唯一蕴含 BOM 级唯一，不误拒）。
+- `BomItem` 无 `project` FK（字典 §10），故 project 级唯一性由**三层**共同承担：① 编号器经 `bom__project` 解析 + 人工预检；② DB 层 `UniqueConstraint(bom, item_no)` 兜底（项目级唯一蕴含 BOM 级唯一，不误拒）；③ `scripts/validate_seed.py` 文件级唯一（fixture `id == item_no` 且逐值唯一）。**D4 约束（遗留）**：D4/解析层若遇同一 project 内出现**同号不同 BOM 的 `BI-###` 歧义**，必须 **fail-loud**（报错而非静默取一条），此约束记入 D4 任务。
 - `InventoryLot.serial_number` / `GitCommit.sha` 人工直写，不继承 `NumberedModel`。
 
 ### D. 迁移结构

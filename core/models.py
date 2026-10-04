@@ -172,6 +172,21 @@ class DocumentType(models.TextChoices):
     OTHER = "other", "other"
 
 
+class PartLifecycleStatus(models.TextChoices):
+    """Part 物料级生命周期（字典 §3 ∪ `rules/bom_scoring.v1.json` / ADR-0005 消费值）。
+
+    物料级须覆盖规则消费的 `obsolete` / `discontinued`（硬过滤排除），故在
+    `schemas.LifecycleStatus` 四值基础上补 `discontinued`；渠道级 `SupplierPart`
+    仍用四值 `LifecycleStatus`，二者拆分、互不替代。
+    """
+
+    ACTIVE = "active", "active"
+    NRND = "nrnd", "nrnd"
+    EOL = "eol", "eol"
+    OBSOLETE = "obsolete", "obsolete"
+    DISCONTINUED = "discontinued", "discontinued"
+
+
 # ---------------------------------------------------------------------------
 # §2 Project
 # ---------------------------------------------------------------------------
@@ -219,8 +234,8 @@ class Part(NumberedModel):
     mpn = models.CharField(max_length=200, blank=True)
     lifecycle_status = models.CharField(
         max_length=16,
-        choices=enum_choices(LifecycleStatus),
-        default=LifecycleStatus.ACTIVE.value,
+        choices=PartLifecycleStatus.choices,
+        default=PartLifecycleStatus.ACTIVE,
     )
     unit = models.CharField(max_length=16, blank=True)
     is_critical = models.BooleanField(default=False)

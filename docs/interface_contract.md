@@ -63,24 +63,25 @@
 
 ## 3. 追溯查询端点
 
-### 3.1 空链语义（`found` / `complete` 两个维度）
+### 3.1 空链语义（`found` / `complete` / `missing`）
 
-`TraceabilityAgentOutput` 用两个**正交**布尔字段表达结果：
+`TraceabilityAgentOutput` 用两个**准正交**布尔字段表达结果（`found=false` 时 `complete` 必为 `false`）：
 
 - `found`：**查询根实体（序列号 / 批次号）是否存在**，与"链上是否有节点"无关。
-- `complete`：**链路是否完整**（`missing` 非空即 `false`；`found=false` 时必为 `false`）。
+- `complete`：**链路是否完整**，与 `missing` 满足**双向强制** `complete ⇔ missing=[]`（`missing=[]` 时必为 `true`；`missing` 非空时必为 `false`；`found=false` 时必为 `false`）。
+- `missing`：导致链不完整的原因列表（**机器 token**，如 `serial_not_found` / `no_trace_links`），必有值；`warnings` 为人类可读补充（可含原因镜像），**不作机器判定依据**。
 
 强制不变量（由 `@model_validator` 保证）：
 
 - `found=false ⟺ nodes=[]`；`found=true` 时 `nodes` 至少包含根节点本身。
-- `found=false ⇒ complete=false`；`complete=true ⇒ missing=[]`。
+- `found=false ⇒ complete=false`；`complete=true ⟺ missing=[]`（**双向**，`complete=false ∧ missing=[]` 非法）。
 
 响应契约：
 
 | 情形 | found | complete | nodes | missing / warnings | HTTP | 调用 LLM | 产生 AgentRun |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 根实体不存在 | false | false | `[]` | `missing=["serial_not_found"]`，`warnings` 含 `"serial_not_found"` | 200 | 否 | 无 |
-| 根存在但无任何 TraceLink | true | false | 含根节点 | `warnings=["未建立追溯链"]` | 200 | 否 | 无 |
+| 根存在但无任何 TraceLink | true | false | 含根节点 | `missing=["no_trace_links"]`，`warnings` 含 `"未建立追溯链"`（人类可读镜像） | 200 | 否 | 无 |
 | 链路完整 | true | true | 全链 | `missing=[]` | 200 | 可选 | 可选 |
 | 链路有断点 | true | false | 已存在节点 | `missing=[...]` | 200 | 可选 | 可选 |
 

@@ -81,6 +81,7 @@
 - Pydantic 模型 `extra="forbid"`：未知字段、缺必填、类型/范围不符、枚举越界 → `ValidationError`。
 - **schema 校验 ≠ 防幻觉**：schema 通过后，业务层必须核验 `SourceRef.id` / `recommended_part_id` / `TraceNode.node_id` 等引用的**实体存在性**（按 `(project_id, entity_type, 业务编号)` 反解，R2）；失败 → 写入 `invalid_references`，不得落库为正式数据。
 - 失败语义：schema 失败 → `AgentRun.status = "failed"`、`output_schema_valid = false`、`output_json = null`、`error` 为摘要，HTTP `422`；引用核验失败 → `reference_check_passed = false`（独立于 `output_schema_valid`）、`invalid_references = [{entity_type, entity_id, reason}]`（`reason ∈ {not_found|wrong_project|unknown_type}`）、同样 `status = "failed"`、**不进入人工确认队列**；两种情况**均保留输入、引用与 `output_json`**。
+- `AgentRun.status` 为**四值**枚举：`failed` / `needs_review` / `success` / `rejected`（绑定规则：`success`/`rejected` ⟹ `confirmed_by`/`confirmed_at` 必填，`failed`/`needs_review` ⟹ 二者必须为 NULL；见 R1 与 `docs/data_dictionary.md` §22）。
 
 ### 2.5 TraceLink 反查
 
@@ -88,7 +89,7 @@
 - 遍历 `TraceLink`；默认 `direction = backward`、`depth = 0`（全链路）。
 - 每个 `TraceNode` 必须带 `source_refs`；`confirmed_by_id IS NULL` 的链**不进入结果**。
 - 链路断点写入 `missing`（如 `"no_purchase_order"`, `"no_test_run"`）。
-- **查不到序列号 → `found=false` 空链，禁止编造**：`found = false`、`nodes = []`、`edges = []`、`missing = ["serial_not_found"]`、`warnings` 含 `"serial_not_found"`；先查库判定 `found`，未命中**短路返回、不调用 LLM**。
+- **查不到序列号 → `found=false` 空链，禁止编造**：`found = false`、`complete = false`、`nodes = []`、`edges = []`、`missing = ["serial_not_found"]`、`warnings` 含 `"serial_not_found"`；先查库判定 `found`，未命中**短路返回、不调用 LLM**。
 - **根实体存在但无 TraceLink**：`found = true`、`nodes` 含根节点自身、`warnings` 含 `"未建立追溯链"`（**不是空链**）。
 - 结果去重、稳定排序、防环。
 
@@ -221,6 +222,7 @@
   - 总分相同 → 先按 `cost` 升序，再按 `part_number` 升序
   - 某维度 `max == min` → 该维度计 `1.0`
   - 停产料（`lifecycle_status = discontinued`）在阶段 1 排除，**不进入候选**，并给出 `replaces_part_id` 与替代理由
+  - `nrnd` 渠道：保留为有效渠道并附 `warning`、不降权（`eol` 渠道排除）；可用构造 `SupplierPart` 测该 `warning`（GT-BOM-009 渠道级口径引用本边界）
 - **备注**：本用例以构造最小集锁定排序口径（与 fixture 无关）。冻结权重下 `80/50/10` 经复核与两阶段公式一致。演示 fixture 的真实演算基线见 GT-BOM-009（OI-6 已决议）。
 
 #### GT-BOM-009 AC-004 演示 fixture 全表演算基线（OI-6 处置后）
@@ -238,7 +240,7 @@
     - `lifecycle:obsolete`（1）：`PART-017`
     - `missing_param`（14）：`PART-003/004/005/006/007/008/009/010/013/014/015/016/019/020`
     - 阈值类（2）：`PART-011`（`current_below_min`，`rated_current = 3 < 5`）、`PART-012`（`temp_out_of_range`，`-20~70°C` 不覆盖 `-40~85°C`）
-  - 渠道级：`SP-003`（`eol`）计算 `PART-001` 时**排除**（有效源 = `SP-001` + `SP-011` = 2）；`SP-007`（`nrnd`）保留并计入 `warning`，v1 不降权
+  - 渠道级：`SP-003`（`eol`）计算 `PART-001` 时**排除**（有效源 = `SP-001` + `SP-011` = 2）；`nrnd` 渠道保留为规则层行为（保留渠道 + `warning`，不降权）——本基线中其归属物料（`PART-004`）因 `missing_param` 被排除、不进入评分，故基线不体现该 `warning`（`SP-007`；可测化构造口径见 GT-BOM-008 边界）
 - **边界**：
   - 权重/公式核对：构造集 `C1/C2/C3` 的 `80/50/10` 与冻结公式一致（GT-BOM-008）
   - Top3 分数并列 → 按 `cost` 升序、再按 `part_number` 升序（本基线无并列）
@@ -467,7 +469,7 @@
 - **When** `GET /trace/serial/SN-DEMO-001/`
 - **Then** 返回"需求→BOM→物料批次→采购单→测试→ECN→Git 提交"链路，含引用
 - **输入**：`sn = SN-DEMO-001`, `direction = backward`
-- **期望**：节点含 `REQ-001`、`BOM-001`、`SN-DEMO-001`、`PO-002`、`TR-001`、`ECN-001`、`b2c3d4e5f60718293a4b5c6d7e8f90123456789a`（该 GitCommit 的提交 SHA）；每个 `TraceNode.source_refs` 非空；`edges` 关系语义正确（`implemented_by`/`sourced_from`/`tested_by`/`affects`/`evidences`/`replaces`）
+- **期望**：节点含 `REQ-001`、`BOM-001`、`SN-DEMO-001`、`PO-002`、`TR-001`、`ECN-001`、`b2c3d4e5f60718293a4b5c6d7e8f90123456789a`（该 GitCommit 的提交 SHA）；每个 `TraceNode.source_refs` 非空；`edges` 关系语义正确（`implemented_by`/`sourced_from`/`tested_by`/`affects`/`evidences`/`replaces`）；`found == true`、`complete == true`、`missing == []`
 - **边界**：`depth = 1` → 仅返回距起点 1 跳的节点；`direction = forward` → 反向展开
 
 #### GT-TRACE-002 未确认链过滤
@@ -486,6 +488,7 @@
 - **期望**：
   - HTTP 状态码 `200`
   - `found == false`
+  - `complete == false`
   - `nodes == []`、`edges == []`
   - `missing == ["serial_not_found"]`
   - `warnings` 含 `"serial_not_found"`
@@ -493,9 +496,9 @@
   - **无新增 AgentRun**（R1：无 LLM 调用即无 AgentRun）
   - **无新增 TraceLink**
   - **不得**出现任何 `REQ-*` / `BOM-*` / `PART-*` 节点
-- **边界 1**：序列号存在但无任何 `TraceLink` → `found == true`，`nodes` 含该 `InventoryLot` 自身，`warnings` 含 `"未建立追溯链"`，`missing` 列出缺失环节；**先查库、无 LLM 调用时同链不产生 AgentRun**
+- **边界 1**：序列号存在但无任何 `TraceLink`（零链）→ `found == true`、`complete == false`，`nodes` 含该 `InventoryLot` 自身，`missing == ["no_trace_links"]`（机器 token），`warnings` 含 `"未建立追溯链"`（人类可读镜像）；**先查库、无 LLM 调用时同链不产生 AgentRun**
 - **边界 2**：大小写/空格差异（`" sn-demo-001 "`）→ 规范化后按存在/不存在分别处理，不误报编造
-- **备注**：**`found=false` 是合法业务结果，严禁记 `failed`**；契约已冻结为 `found: bool` + 不变量 `found=false ⟺ nodes=[]`、`found=true ⟹ nodes` 含根节点（见 §6 OI-1，已决议）。**无 LLM 调用 → 无 AgentRun（R1）**。
+- **备注**：**`found=false` 是合法业务结果，严禁记 `failed`**；契约已冻结为 `found: bool` + 不变量 `found=false ⟺ nodes=[]`、`found=false ⇒ complete=false`、`complete ⇔ missing=[]`（双向）、`found=true ⟹ nodes` 含根节点（见 §6 OI-1，已决议）。**无 LLM 调用 → 无 AgentRun（R1）**。
 
 #### GT-TRACE-004 每个节点必须带引用
 - **Given** 命中链路的节点
@@ -530,7 +533,7 @@
 - **Then** 按批次号定位并返回链路
 - **输入**：`query_type = "lot"`, `LOT-DCDC-001`
 - **期望**：起点为对应 `InventoryLot`；其余口径同 `serial`
-- **边界**：序列号当作批次号查询且不存在 → `found=false` 空链（同 GT-TRACE-003）；不因参数类型差异编造
+- **边界**：序列号当作批次号查询且不存在 → `found=false`、`complete=false` 空链（同 GT-TRACE-003）；不因参数类型差异编造
 
 ---
 

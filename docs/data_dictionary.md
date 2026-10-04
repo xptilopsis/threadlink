@@ -13,7 +13,6 @@
 | 时间 | 统一 `timestamptz`（Django `DateTimeField`）；`date` 用 `DateField` |
 | 金额 / 数量 | `numeric(18,4)`（Django `DecimalField`），避免浮点误差 |
 | JSON | `json`（Django `JSONField`）；描述与查询均按 `JSONField`，**不写 `jsonb`**，避免依赖 PostgreSQL jsonb 包含查询（R4） |
-
 | 软删除 | 审计相关实体（`TraceLink`、`ECN`、`Document`、`AgentRun`）**不做物理删除**，用状态位 / 标记留痕 |
 | 多态字段 | 以 `*_type varchar` + `*_id varchar`（**业务编号**，非数据库主键）成对出现（`TraceLink`、`ECNImpact`）（R2，见 §0.1） |
 
@@ -500,7 +499,6 @@
 | references | json | 否 | 引用来源（`SourceRef[]`，业务编号），防幻觉 |
 | confirmed_by_id | bigint | 否 | FK → User（SET NULL），确认人（读契约字段 `confirmed_by`） |
 | confirmed_at | timestamptz | 否 | 确认时间 |
-
 | error | text | 否 | 失败信息 |
 | created_at | timestamptz | 是 | 创建时间 |
 

@@ -9,7 +9,9 @@
 4. 所有业务编号引用可闭合：FK 字段、多态端点（TraceLink / ECNImpact）、``AgentRun.references``；
 5. 多态端点类型落在 ``EntityType`` 白名单内（与 ``schemas/agent_outputs.py`` 对齐）；
 6. ``AgentRun.status`` 为四值且 ``confirmed_by`` / ``confirmed_at`` 绑定规则成立（R1）；
-7. 每个 ``user.role`` 落在冻结职能枚举内（T2.4）。
+7. 每个 ``user.role`` 落在冻结职能枚举内（T2.4）；
+8. 演示数据集数量对齐 PRD AC-001（``==`` 精确清点 / ``>=`` 下限，V-01）；
+9. 防幻觉（failed AgentRun）/ 停产料 / 长交期样例齐备（V-01）。
 
 退出码：0 全部通过；1 存在校验失败。
 用法：``python scripts/validate_seed.py [seed_path]``
@@ -138,6 +140,24 @@ ID_INDEXED_COLLECTIONS = {"trace_links", "agent_runs"}
 AGENT_RUN_STATUS = {"failed", "needs_review", "success", "rejected"}
 CONFIRMED_STATUS = {"success", "rejected"}
 
+# 数量断言（T2.0/V-01，对齐 PRD AC-001 清点）：== 精确清点、>= 下限
+COUNT_EQUALS = {
+    "project": 1,
+    "parts": 20,
+    "requirements": 5,
+    "test_cases": 10,
+    "suppliers": 3,
+    "purchase_orders": 5,
+    "inventory_lots": 3,
+    "ecns": 2,
+}
+COUNT_MIN = {
+    "test_runs": 10,
+    "part_params": 30,
+    "boms": 1,
+    "git_commits": 3,
+}
+
 # User.role 冻结职能枚举（T2.4，以 PRD §3 为权威）
 ROLE_ENUM = {"admin", "engineer", "procurement", "test", "quality"}
 
@@ -161,6 +181,8 @@ class Validator:
         return []
 
     def build_index(self) -> None:
+        # 注：project 归属一致性校验（R9 解析键含 project_id）在单项目 fixture 下延后至
+        # D2 引用核验统一实现；BomItem 等无 project_id 的实体经父级 FK 间接归属。
         for coll, bizno_field in BIZNO.items():
             rows = self.rows(coll)
             if not rows:
@@ -220,6 +242,7 @@ class Validator:
                 )
 
     def check_ref(self, coll: str, field: str, target: str, value: str) -> None:
+        # 注：此处仅按业务编号解析存在性；project 归属一致性（R9）在单项目 fixture 下延后至 D2。
         table = self.index.get(target, {})
         if value not in table:
             self.fail(f"{coll}.{field} → {target}: 引用无法闭合 {value!r}")
@@ -281,6 +304,42 @@ class Validator:
             if status not in CONFIRMED_STATUS and has_conf:
                 self.fail(f"agent_runs {aid}: status={status} 时 confirmed_by_id / confirmed_at 必须为 NULL")
 
+    def check_counts(self) -> None:
+        """V-01：演示数据集清点对齐 PRD AC-001（``COUNT_EQUALS`` 精确 / ``COUNT_MIN`` 下限）。"""
+        for coll, expected in COUNT_EQUALS.items():
+            actual = len(self.rows(coll))
+            if actual != expected:
+                self.fail(f"{coll}: 数量 {actual} != 期望 {expected}（AC-001 清点）")
+        for coll, minimum in COUNT_MIN.items():
+            actual = len(self.rows(coll))
+            if actual < minimum:
+                self.fail(f"{coll}: 数量 {actual} < 下限 {minimum}（AC-001 清点）")
+
+    def check_demo_requirements(self) -> None:
+        """V-01：防幻觉 / 停产料 / 长交期演示样例齐备。"""
+        has_failed = any(
+            row.get("status") == "failed"
+            and row.get("invalid_references")
+            and row.get("reference_check_passed") is False
+            and not row.get("confirmed_by_id")
+            and not row.get("confirmed_at")
+            for row in self.rows("agent_runs")
+        )
+        if not has_failed:
+            self.fail(
+                "agent_runs: 缺少 status=failed 且 invalid_references 非空、"
+                "reference_check_passed=false、confirmed_by/at 为 NULL 的防幻觉样例（V-01）"
+            )
+        if not any(
+            row.get("lifecycle_status") in {"obsolete", "discontinued"}
+            for row in self.rows("parts")
+        ):
+            self.fail("parts: 缺少停产料样例（lifecycle_status ∈ {obsolete, discontinued}）")
+        if not any(
+            (row.get("lead_time_days") or 0) > 60 for row in self.rows("supplier_parts")
+        ):
+            self.fail("supplier_parts: 缺少 lead_time_days > 60 的长交期样例")
+
     def run(self) -> list[str]:
         keys = set(self.data)
         for missing in sorted(REQUIRED_KEYS - keys):
@@ -295,6 +354,8 @@ class Validator:
         self.check_polymorphic()
         self.check_source_refs()
         self.check_agent_run_status()
+        self.check_counts()
+        self.check_demo_requirements()
         return self.errors
 
 

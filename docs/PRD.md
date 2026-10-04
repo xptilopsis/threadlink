@@ -215,7 +215,7 @@ AI 智能体可以辅助需求提取、物料选型和全链路追溯，但若�
 - **AC-005**
   - Given 存在有效的样机序列号
   - When 用户输入该序列号触发 Traceability Agent
-  - Then 系统返回"需求→BOM→物料批次→采购单→测试→ECN→Git 提交"链路，且每个节点带引用；`found` 与 `complete` **两个维度分别判定**——`missing` 非空则 `complete=false`（`found=true` 但存在断点），根实体不存在时 `found=false`（合法业务结果，非失败）。口径与 `docs/interface_contract.md` §3.1 情形表一致。
+  - Then 系统返回"需求→BOM→物料批次→采购单→测试→ECN→Git 提交"链路，且每个节点带引用；`found` 与 `complete` 为**准正交**维度（`found=false` 时 `complete` 必为 `false`），且 `complete ⇔ missing=[]`（**双向强制**：`missing` 非空则 `complete=false`；`missing=[]` 则 `complete=true`）——根实体不存在时 `found=false` 且 `complete=false`（合法业务结果，非失败）。口径与 `docs/interface_contract.md` §3.1 情形表一致。
 
 ### 7.5 ECN 影响
 

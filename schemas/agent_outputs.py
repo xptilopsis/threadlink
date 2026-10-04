@@ -303,11 +303,14 @@ class TraceabilityAgentOutput(_StrictModel):
     ``found`` 表示**查询根实体（序列号 / 批次号）是否存在**，而非链上是否有节点。
     强制不变量：``found=False`` 时 ``nodes`` 必须为空；``found=True`` 时 ``nodes``
     至少包含根节点本身。根实体存在但未建立任何 TraceLink 时，返回
-    ``found=True`` + 根节点 + ``warnings`` 说明"未建立追溯链"，而非空链。
+    ``found=True`` + 根节点 + ``complete=False`` + ``missing=["no_trace_links"]``
+    （机器 token；``warnings`` 可保留人类可读镜像，不作机器判定依据）。
 
-    ``found`` 与 ``complete`` 是**两个正交维度**：``found`` 表示根实体是否存在，
-    ``complete`` 表示链路是否完整（``found=False`` 时必为 ``False``；``complete=True``
-    时 ``missing`` 必须为空）。
+    ``found`` 与 ``complete`` 是**准正交**维度（``found=False`` 时 ``complete`` 必为
+    ``False``）。``complete`` 表示链路是否完整，与 ``missing`` 满足**双向强制**：
+    ``complete=True ⟺ missing=[]``（即 ``complete=False`` 且 ``missing=[]`` 非法）。
+    ``missing`` 为导致链不完整的原因列表（机器 token，如 ``serial_not_found`` /
+    ``no_trace_links``），必有值。
     """
 
     agent_name: AgentName = AgentName.TRACEABILITY
@@ -315,7 +318,7 @@ class TraceabilityAgentOutput(_StrictModel):
     root: str = Field(min_length=1, description="查询输入的回显（序列号 / 批次号），不代表命中")
     query_type: Literal["serial", "lot"] = "serial"
     found: bool = Field(description="查询根实体是否存在")
-    complete: bool = Field(description="链路是否完整；与 found 正交，found=False 时必为 False")
+    complete: bool = Field(description="链路是否完整（准正交：found=False 时必为 False；complete ⇔ missing=[]）")
     nodes: list[TraceNode] = Field(default_factory=list)
     edges: list[TraceEdge] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list, description="链路中缺失的环节")
@@ -332,6 +335,8 @@ class TraceabilityAgentOutput(_StrictModel):
             raise ValueError("found=False 时 complete 必须为 False")
         if self.complete and self.missing:
             raise ValueError("complete=True 时 missing 必须为空")
+        if not self.complete and not self.missing:
+            raise ValueError("missing 为空时 complete 必须为 True（complete ⇔ missing=[] 双向）")
         return self
 
 

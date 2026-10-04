@@ -17,21 +17,22 @@
 
 ## 决策
 
-### 1. 空链语义（两个正交维度）
+### 1. 空链语义（found/complete 准正交 + missing 双向强制）
 
-`TraceabilityAgentOutput` 用 `found` 与 `complete` 表达结果：
+`TraceabilityAgentOutput` 用 `found` 与 `complete` 表达结果（`found=false` 时 `complete` 必为 `false`，**准正交**）：
 
 - `found`：**查询根实体（序列号 / 批次号）是否存在**，与「链上是否有节点」无关；
-- `complete`：**链路是否完整**（`missing` 非空即 `false`；`found=false` 时必为 `false`）。
+- `complete`：**链路是否完整**，与 `missing` 满足**双向强制** `complete ⇔ missing=[]`；
+- `missing`：导致链不完整的原因列表（**机器 token**，如 `serial_not_found` / `no_trace_links`），必有值；`warnings` 为人类可读补充，不作机器判定依据。
 
-强制不变量（`@model_validator`）：`found=false ⟺ nodes=[]`；`found=true ⟹ nodes` 至少含根节点；`complete=true ⟹ missing=[]`。
+强制不变量（`@model_validator`）：`found=false ⟺ nodes=[]`；`found=true ⟹ nodes` 至少含根节点；`found=false ⟹ complete=false`；`complete=true ⟺ missing=[]`（**双向**，`complete=false ∧ missing=[]` 非法）。
 
 响应情形（与 `interface_contract` §3.1 情形表一致）：
 
 | 情形 | found | complete | nodes | missing / warnings |
 | --- | --- | --- | --- | --- |
 | 根实体不存在 | false | false | `[]` | `missing=["serial_not_found"]` |
-| 根存在但无 TraceLink | true | false | 含根节点 | `warnings=["未建立追溯链"]` |
+| 根存在但无 TraceLink | true | false | 含根节点 | `missing=["no_trace_links"]`，`warnings` 含 `"未建立追溯链"`（人类可读镜像） |
 | 链路完整 | true | true | 全链 | `missing=[]` |
 | 链路有断点 | true | false | 已存在节点 | `missing=[...]` |
 
@@ -54,3 +55,9 @@
 - 正向：空结果不再被误判为失败；幻觉 ID 在结构校验后被独立拦截；审计只记录真实 LLM 调用。
 - 负向 / 成本：需维护 `EntityType` 白名单与 `(project_id, entity_type, business_no)` 解析规则，D2 引用核验与 TraceLink 端点解析共用同一规则。
 - 本 ADR 只冻结契约，不写业务逻辑、不做迁移。
+## Amendment（2026-10-04，复检后裁决）
+
+- **原条款（T2.10 初稿）**：`found=false ⇒ missing=[]`。
+- **最终条款（M 定稿，已并入上方正文）**：`found=false ⇒ nodes=[] ∧ complete=false`；`complete ⇔ missing=[]`（**双向强制**）；`found=false` 时 `missing` 为非空原因列表（如 `["serial_not_found"]`）；根存在但零 `TraceLink` 时 `missing` 含 `"no_trace_links"`（机器 token）。`warnings` 仅作人类可读补充，不作机器判定依据。
+- **理由**：原条款与 GT-TRACE-003（未命中须 `missing=["serial_not_found"]`）冲突；统一为单一双向不变量后，消除 `found=false` 分支特例，`missing` 语义对全部情形一致（= 链路不完整原因列表）。
+- **触发来源**：D1 独立复检（2026-10-04）发现的 M-01 契约分歧，经裁决统一并同步 `interface_contract` §3.1 / `schemas/agent_outputs.py` / `golden_tests` / `PRD` AC-005。

@@ -110,3 +110,26 @@ start_threadlink_shell.bat
 cd /d C:\Users\Lenovo\Desktop\Threadlink\threadlink
 .venv\Scripts\activate.bat
 ```
+## 种子数据校验
+
+`scripts/validate_seed.py` 对 `fixtures/demo_seed.json` 做**数据契约校验**（业务编号唯一性、`id == 业务编号字段` 的 R8 自洽、引用闭包、多态端点白名单、`AgentRun.status` 四值规则、`User.role` 职能枚举）。校验不依赖 Django / 数据库 / 第三方库，退出码 `0` 通过、`1` 失败。
+
+### 使用（Windows cmd）
+
+```cmd
+cd /d C:\Users\Lenovo\Desktop\Threadlink\threadlink
+python scripts\validate_seed.py
+```
+
+也可显式指定种子文件：
+
+```cmd
+python scripts\validate_seed.py fixtures\demo_seed.json
+```
+
+通过时输出形如：
+
+```text
+[OK] 种子校验通过：...\fixtures\demo_seed.json
+     顶层键 22 个；TraceLink 39 条；引用闭包完整。
+```

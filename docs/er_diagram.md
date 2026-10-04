@@ -33,7 +33,7 @@ erDiagram
     PROJECT ||--o{ DOCUMENT : contains
     PROJECT ||--o{ GIT_REPO : contains
     PROJECT ||--o{ AGENT_RUN : contains
-    PROJECT ||--o{ KNOWLEDGE_ITEM : contains
+
     PROJECT ||--o{ TRACELINK : scopes
 
     PART ||--o{ PART_PARAM : has
@@ -60,9 +60,10 @@ erDiagram
     AGENT_RUN ||--o{ REQUIREMENT : suggests
     AGENT_RUN ||--o{ ECN : suggests
 
-    %% TRACELINK.from_*/to_* 为多态引用，跨下列实体：
-    %% PART REQUIREMENT BOM BOM_ITEM INVENTORY_LOT PURCHASE_ORDER
-    %% TEST_CASE TEST_RUN ECN ECN_IMPACT DOCUMENT GIT_COMMIT WORK_ORDER
+    %% TRACELINK.from_*/to_* 为多态引用，跨下列 13 类实体（EntityType 白名单）：
+    %% PART REQUIREMENT SUPPLIER BOM BOM_ITEM INVENTORY_LOT WORK_ORDER
+    %% PURCHASE_ORDER TEST_CASE TEST_RUN ECN DOCUMENT GIT_COMMIT
+    %% 注：User / Project / AgentRun / TraceLink 与明细表（PartParam 等，含 ECN_IMPACT）均不作多态端点
 ```
 
 ---

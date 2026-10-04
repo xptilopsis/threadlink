@@ -1,0 +1,5 @@
+docs(d1): batch3+收尾交付物（复检基线 9f57f7d 工作区）[recheck: PASS WITH ISSUES, 0 blocker]
+
+批次 3（§A-§E）+ 收尾批（OI-6 处置/评分冻结/ADR-0005/ER 注释对齐）的全部交付物，
+已经独立复检：PASS WITH ISSUES（0 blocker，2 should-fix，3 nit）。
+修复项（F-01/F-02/F-03/F-04/F-05）与 M-01/V-01 在下一提交处理。

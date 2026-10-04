@@ -1,0 +1,130 @@
+{
+  "rule_id": "bom_scoring",
+  "version": "v1",
+  "status": "frozen",
+  "status_note": "frozen = 已经人工确认冻结（D1 收尾裁决）；D1 只冻结口径，不实现业务逻辑。",
+  "frozen_at": "2026-10-04",
+  "frozen_basis": "D1 收尾裁决：两阶段模型、权重 cost 0.5 / lead_time 0.3 / multi_source 0.2、归一化方向、过滤顺序与 lifecycle 映射均经人工确认冻结；承载 PRD AC-004 与 golden test GT-BOM-008。详见 docs/adr/0005-bom-scoring-v1-frozen.md。",
+  "source": ["docs/PRD.md#AC-004", "docs/golden_tests.md#2.1", "docs/golden_tests.md#GT-BOM-008", "docs/adr/0005-bom-scoring-v1-frozen.md"],
+  "model": "two_phase",
+  "phase_1_hard_filter": {
+    "description": "合规门槛（非排序）：按 filter_order 逐项判定，任一不满足即排除；参数缺失视为不满足。",
+    "filter_order": ["lifecycle", "param_completeness", "param_threshold", "cost_max"],
+    "steps": [
+      {
+        "id": "lifecycle",
+        "order": 1,
+        "target": "part.lifecycle_status",
+        "op": "exclude_values",
+        "values": ["obsolete", "discontinued"],
+        "reason": "lifecycle:<value>（lifecycle:obsolete / lifecycle:discontinued）",
+        "note": "停产物料优先排除；若存在 replaces 关系，输出 replaces_part_id 与被替代理由。fixture 中的 obsolete（PART-017）即由本步排除。"
+      },
+      {
+        "id": "param_completeness",
+        "order": 2,
+        "required_params": ["input_voltage", "rated_current", "operating_temp", "ip_rating"],
+        "reason": "missing_param",
+        "note": "四个关键参数任一缺失 → 排除（reason=missing_param）；先做完整性再做阈值，保证排除原因可读、不与阈值原因混淆。"
+      },
+      {
+        "id": "param_threshold",
+        "order": 3,
+        "criteria": [
+          {
+            "id": "input_voltage",
+            "param": "input_voltage",
+            "op": "range_covers",
+            "min": 9,
+            "max": 36,
+            "unit": "V",
+            "rule": "value_min <= 9 且 value_max >= 36",
+            "reason": "voltage_out_of_range"
+          },
+          {
+            "id": "rated_current",
+            "param": "rated_current",
+            "op": "gte",
+            "value": 5,
+            "unit": "A",
+            "reason": "current_below_min"
+          },
+          {
+            "id": "operating_temp",
+            "param": "operating_temp",
+            "op": "range_covers",
+            "min": -40,
+            "max": 85,
+            "unit": "C",
+            "rule": "value_min <= -40 且 value_max >= 85",
+            "reason": "temp_out_of_range"
+          },
+          {
+            "id": "ip_rating",
+            "param": "ip_rating",
+            "op": "ip_gte",
+            "value": 65,
+            "rule": "解析 value_text 的 IPxx 数字，xx >= 65",
+            "reason": "ip_below_min"
+          }
+        ]
+      },
+      {
+        "id": "cost_max",
+        "order": 4,
+        "param": "unit_cost",
+        "op": "lte",
+        "optional": true,
+        "reason": "cost_exceeded",
+        "note": "调用方可选提供单价上限；超出即排除；未提供则不启用。演示不启用（AC-004 的 800 元为整机 BOM 成本约束，非单料单价上限）。"
+      }
+    ],
+    "supplier_lifecycle": {
+      "scope": "supplier_parts.lifecycle_status（渠道级，独立于物料级判定）",
+      "exclude_values": ["eol"],
+      "keep_with_warning": ["nrnd"],
+      "note": "eol 渠道在计算 min(unit_price) / min(lead_time) / multi_source 时排除；nrnd 渠道保留并计入 warning，v1 不做降权，留 D6 评估。物料级与渠道级互不替代。"
+    },
+    "exclude_reasons": ["lifecycle:obsolete", "lifecycle:discontinued", "missing_param", "voltage_out_of_range", "current_below_min", "temp_out_of_range", "ip_below_min", "cost_exceeded"]
+  },
+  "phase_2_scoring": {
+    "description": "仅对通过阶段 1 者评分；各维度先 min-max 归一化到 [0,1]，再加权。维度取值仅统计有效供货渠道（supplier_parts.lifecycle_status != eol）。",
+    "dimensions": [
+      {
+        "id": "cost",
+        "weight": 0.5,
+        "direction": "lower_better",
+        "source": "min(unit_price) over 有效 supplier_parts of the part（排除 eol 渠道）",
+        "formula": "(max - x) / (max - min)"
+      },
+      {
+        "id": "lead_time",
+        "weight": 0.3,
+        "direction": "lower_better",
+        "source": "min(lead_time_days) over 有效 supplier_parts of the part（排除 eol 渠道）",
+        "formula": "(max - x) / (max - min)"
+      },
+      {
+        "id": "multi_source",
+        "weight": 0.2,
+        "direction": "higher_better",
+        "source": "count(有效 supplier_parts of the part)（排除 eol 渠道）",
+        "formula": "(x - min) / (max - min)"
+      }
+    ],
+    "normalization": {
+      "method": "min_max",
+      "range": [0, 1],
+      "degenerate": "max == min 时该维度计 1.0",
+      "direction_note": "lower_better 直接套用 (max-x)/(max-min)；higher_better 取镜像 (x-min)/(max-min)，以符合『数量越多越高』。"
+    },
+    "total_score": "100 * (0.5*cost_norm + 0.3*lead_time_norm + 0.2*multi_source_norm)",
+    "ranking": ["total_score desc", "cost asc", "part_number asc"],
+    "output": {
+      "top_n": 3,
+      "include_excluded": true,
+      "excluded_requires_reason": true,
+      "excluded_requires_replacement_when_discontinued": true
+    }
+  }
+}

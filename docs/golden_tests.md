@@ -45,7 +45,7 @@
 - 单个节点的**累计用量** = 根到该节点路径上各 `quantity` 的乘积；工单场景再乘以 `WorkOrder.quantity`。
 - 同一 `part_id` 经多条路径出现时，**汇总求和**。
 - 输出顺序：按 `depth` 升序；同层按 `position`、`ref_des` 稳定排序（保证结果可复现）。
-- 仅展开 `Bom.status ∈ {released, draft}` 的 BOM；`obsolete` 默认拒绝展开（可配置）。
+- 仅展开 `Bom.status ∈ {released, draft}` 的 BOM；`obsolete` 默认拒绝展开（可配置）。**`draft` BOM 展开须附 `warning = "draft_bom"`**（口径与 GT-BOM-005 边界、GT-ECN 系列无关，统一按此判定）。
 - 环形引用（父链出现重复 `BomItem.id`）→ 抛 `cyclic_bom_structure`，**不返回部分结果**。
 - 孤儿节点（`part_id` 指向不存在的 `Part`）→ 抛 `orphan_bom_item`。
 - **ECN 影响分析与正式应用（两阶段，R6）**：当 `ECN.status ∈ {approved, implemented}` 且 `effective_date ≤ as_of_date`（`effective_date` 为空视为未生效）时——**影响分析**在计算视图中投影受影响 `BomItem` 的 `part_id` 将被替换为替代料，**不写回正式实体**（仅 `ECNImpact` 记录）；**ECN 正式应用**须经人工确认，确认后更新正式 `BomItem.part_id` 并写 `TraceLink`（`ECN→目标, affects`，含 `confirmed_by`/`confirmed_at`）留痕。空 `effective_date` **不得生效**。系统**不存在「自动改 BOM」（无人工确认的静默写入）**，但**存在**「ECN 生效经人工确认后的正式 BOM 变更」。
@@ -100,11 +100,13 @@
 
 | 实体 | 关键值 |
 | --- | --- |
-| `BOM-001` | `status = released`；15 个 `BomItem`，其中顶层 4 个（`BI-001`~`BI-004`），二级 11 个（`BI-005`~`BI-015`） |
+| `BOM-001` | `status = released`；16 个 `BomItem`，其中顶层 4 个（`BI-001`~`BI-004`），二级 11 个（`BI-005`~`BI-015`），三级 1 个（`BI-016`，父为 `BI-006`） |
 | `BI-001` | `part_id = PART-001`, `quantity = 1`, `is_critical = true`；子项 `BI-005/006/009/010` |
 | `BI-002` | `part_id = PART-004`；子项 `BI-012/013/015` |
 | `BI-003` | `part_id = PART-005`；子项 `BI-007/008/011/014` |
 | `BI-004` | `part_id = PART-006`, `quantity = 2`；无子项 |
+| `BI-005` | 叶子节点（无子项），用于叶子判定用例（GT-BOM-002） |
+| `BI-016` | `parent_item_id = BI-006`, `part_id = PART-009`, `quantity = 2`；三级嵌套用例（GT-BOM-007） |
 | `WO-001` | `bom_id = BOM-001`, `quantity = 10`, `due_date = 2026-04-30` |
 | `LOT-DCDC-001` | `PART-001`, `quantity = 100`, `qty_available = 80`, `status = available`（**部分占用**） |
 | `LOT-ENCL-001` | `PART-004`, `quantity = 50`, `qty_available = 40`, `status = available`（**部分占用**） |
@@ -117,6 +119,8 @@
 | `PART-017` | `lifecycle_status = obsolete` |
 | `PART-018` | `supplier lead_time_days = 90`（长交期） |
 | 替代关系 | `TL-039`：`PART-002 replaces PART-001` |
+| 选型关键参数（补齐后） | `PART-001`/`PART-002` 补 `ip_rating = IP65`；`PART-018` 补 `input_voltage 9-36V` / `rated_current 5A` / `operating_temp -40~85°C` / `ip_rating IP65` / `unit_cost 88.00`；`PART-011` 补电压/温度/IP/成本（`rated_current = 3A` 不足 → 阈值排除）；`PART-012` 补电压/电流/IP/成本（`operating_temp -20~70°C` 不足 → 阈值排除） |
+| 选型有效渠道（排除 `eol`） | `PART-001` = 2（`SP-001`/`SP-011`；`SP-003` `eol` 排除）、`PART-002` = 3（`SP-002`/`SP-012`/`SP-013`）、`PART-018` = 1（`SP-005`）；`SP-007`（`nrnd`）保留 + `warning` |
 
 ---
 
@@ -124,7 +128,8 @@
 
 | 强制覆盖项 | 对应用例 |
 | --- | --- |
-| 多层 BOM 父子展开 | GT-BOM-001、GT-BOM-002、GT-BOM-003、GT-BOM-004 |
+| 多层 BOM 父子展开 | GT-BOM-001、GT-BOM-002、GT-BOM-003、GT-BOM-004、GT-BOM-007 |
+| 选型评分 Top3 排序（规则 v1） | GT-BOM-008、GT-BOM-009 |
 | 替代料组 | GT-KIT-004、GT-KIT-008 |
 | 库存批次部分占用 | GT-KIT-002、GT-KIT-007 |
 | 在途 PO 最晚到货日 | GT-KIT-003、GT-KIT-008 |
@@ -147,13 +152,13 @@
 - **期望**：`len(rows) == 4`；每行 `depth == 0`；`BI-004.required_qty == 2`
 - **边界**：BOM 无任何 `BomItem` → 返回空列表（非报错）
 
-#### GT-BOM-002 多层父子展开（≥2 层）
-- **Given** `BI-001` 存在子项 `BI-005/006/009/010`；`BI-005` 约定为叶子
+#### GT-BOM-002 叶子节点判定（BI-005 为叶子）
+- **Given** `BI-001` 存在子项 `BI-005/006/009/010`；`BI-005` 为叶子（无任何子项）
 - **When** 展开 BOM-001 且保留层级
-- **Then** 展开结果共 15 行，`BI-005` 的 `depth == 1`、`parent_item_id == BI-001`
+- **Then** `BI-005` 的 `depth == 1`、`parent_item_id == BI-001`，且结果中**不存在** `parent_item_id == BI-005` 的行
 - **输入**：`bom_id=BOM-001`, `include_hierarchy=true`
-- **期望**：`BI-005(PART-007×4)`、`BI-006(PART-008×10)`、`BI-009(PART-011×2)`、`BI-010(PART-012×2)`；`BI-001` 出现在这 4 行之前
-- **边界**：三层及以上嵌套（构造 `BI-005` 再挂子项）→ `depth` 逐层递增且累计用量按路径连乘
+- **期望**：`BI-005(PART-007×4)`、`BI-006(PART-008×10)`、`BI-009(PART-011×2)`、`BI-010(PART-012×2)`；`BI-001` 出现在这 4 行之前；`BI-005.children == []`
+- **边界**：非叶子节点（如 `BI-001`）`children` 非空；叶子判定与 `depth` 无关（深层节点仍可为叶子）
 
 #### GT-BOM-003 工单数量放大（用量连乘）
 - **Given** `WO-001.quantity = 10`，`BI-004.quantity = 2`，`BI-008.quantity = 12`
@@ -186,6 +191,59 @@
 - **输入**：`bom_id` 指向含停产物料的 BOM
 - **期望**：停产物料行 `lifecycle_status == "obsolete"` 且 `risk_flags` 含 `discontinued`
 - **边界**：`nrnd` 物料 → 标记 `nrnd` 但不阻断
+
+---
+
+#### GT-BOM-007 三层嵌套展开（depth 递增 + 累计用量连乘）
+- **Given** fixture 含三层链 `BI-001`（顶层，`quantity = 1`）→ `BI-006`（`depth 1`，`quantity = 10`）→ `BI-016`（`depth 2`，`quantity = 2`）
+- **When** 展开 BOM-001 且保留层级
+- **Then** `depth` 逐层递增（`BI-001 = 0`、`BI-006 = 1`、`BI-016 = 2`），`BI-016` 累计用量 = 路径连乘 = `1 × 10 × 2 = 20`
+- **输入**：`bom_id=BOM-001`, `include_hierarchy=true`
+- **期望**：`BI-016(PART-009×20)`、`depth == 2`、`parent_item_id == BI-006`，且出现在 `BI-006` 之后
+- **边界**：再挂一层（构造 `BI-017` 起）→ `depth == 3` 且累计用量继续按路径连乘；父链重复出现同一 `BomItem.id` → 抛 `cyclic_bom_structure`
+
+---
+
+#### GT-BOM-008 选型评分 Top3 排序（规则 `rules/bom_scoring.v1.json` v1）
+- **Given** 规则文件 `rules/bom_scoring.v1.json`（`status = frozen`，v1）与一组**通过阶段 1 硬过滤**的构造候选（最小可控集，仅用于锁定排序口径）：
+  - `C1`：`unit_price = 10`、`lead_time_days = 5`、可供供应商数 = 1
+  - `C2`：`unit_price = 20`、`lead_time_days = 5`、可供供应商数 = 3
+  - `C3`：`unit_price = 20`、`lead_time_days = 10`、可供供应商数 = 2
+- **When** 按规则执行阶段 2（`min-max` 归一化 + 加权）并取 Top3
+- **Then** 归一化与加权结果确定，排序为 `C1 > C2 > C3`
+- **输入**：上述构造候选（`cost_max` 未提供）
+- **期望**：
+  - `cost`（lower_better，min=10 / max=20）：`C1=1.0`、`C2=0.0`、`C3=0.0`
+  - `lead_time`（lower_better，min=5 / max=10）：`C1=1.0`、`C2=1.0`、`C3=0.0`
+  - `multi_source`（higher_better，min=1 / max=3）：`C1=0.0`、`C2=1.0`、`C3=0.5`
+  - 总分（`100 × (0.5·cost + 0.3·lead_time + 0.2·multi_source)`）：`C1 = 80`、`C2 = 50`、`C3 = 10`
+- **边界**：
+  - 总分相同 → 先按 `cost` 升序，再按 `part_number` 升序
+  - 某维度 `max == min` → 该维度计 `1.0`
+  - 停产料（`lifecycle_status = discontinued`）在阶段 1 排除，**不进入候选**，并给出 `replaces_part_id` 与替代理由
+- **备注**：本用例以构造最小集锁定排序口径（与 fixture 无关）。冻结权重下 `80/50/10` 经复核与两阶段公式一致。演示 fixture 的真实演算基线见 GT-BOM-009（OI-6 已决议）。
+
+#### GT-BOM-009 AC-004 演示 fixture 全表演算基线（OI-6 处置后）
+- **Given** 已补齐关键参数的演示 fixture（`fixtures/demo_seed.json`）与冻结规则 `rules/bom_scoring.v1.json`（v1）
+- **When** 对全部 20 个 `Part` 执行阶段 1 硬过滤（顺序：`lifecycle → param_completeness → param_threshold → cost_max`），再对通过者执行阶段 2 评分并取 Top3
+- **Then** 阶段 1 通过 **3** 个（`PART-001`/`PART-002`/`PART-018`），满足 AC-004「候选 ≥ 3」；Top3 分数互不相同
+- **输入**：全表 `Part`（`cost_max` 未启用）；渠道口径见 §3
+- **期望**：
+  - 通过者评分（有效渠道 min 单价 / 有效渠道 min 交期 / 有效渠道数）：
+    - `PART-002`：`45.00` / `14` / `3` → 总分 **94.79**（Top1）
+    - `PART-001`：`40.00` / `21` / `2` → 总分 **87.24**（Top2）
+    - `PART-018`：`88.00` / `90` / `1` → 总分 **0.00**（Top3）
+  - 排序：`PART-002 > PART-001 > PART-018`
+  - 排除 **17** 个，三类原因齐全：
+    - `lifecycle:obsolete`（1）：`PART-017`
+    - `missing_param`（14）：`PART-003/004/005/006/007/008/009/010/013/014/015/016/019/020`
+    - 阈值类（2）：`PART-011`（`current_below_min`，`rated_current = 3 < 5`）、`PART-012`（`temp_out_of_range`，`-20~70°C` 不覆盖 `-40~85°C`）
+  - 渠道级：`SP-003`（`eol`）计算 `PART-001` 时**排除**（有效源 = `SP-001` + `SP-011` = 2）；`SP-007`（`nrnd`）保留并计入 `warning`，v1 不降权
+- **边界**：
+  - 权重/公式核对：构造集 `C1/C2/C3` 的 `80/50/10` 与冻结公式一致（GT-BOM-008）
+  - Top3 分数并列 → 按 `cost` 升序、再按 `part_number` 升序（本基线无并列）
+  - 若再次修改 fixture 物料参数 → 必须重跑本基线并更新，**不得边跑边调数据凑结果**
+- **备注**：OI-6 处置 = 补齐 fixture 关键参数（人工放行修数据），修数据前阶段 1 通过者为 **0**；详见 ADR-0005。
 
 ---
 
@@ -478,7 +536,7 @@
 
 ## 6. 待冻结的契约分歧点（Open Issues）
 
-> 冻结过程中发现的**契约冲突**。**OI-1、OI-2 已于 2026-10-04 决议并冻结**（见下）；其余项需在 D12 前决议，决议前 D12 以本节"建议口径"为准。
+> 冻结过程中发现的**契约冲突**。**OI-1、OI-2、OI-6 已于 2026-10-04 决议并冻结**（见下）；其余项需在 D12 前决议，决议前 D12 以本节"建议口径"为准。
 
 | ID | 问题 | 现状 | 处置 |
 | --- | --- | --- | --- |
@@ -487,6 +545,7 @@
 | **OI-3** | 齐套"在途量"来源 | 明细数量存于 `TraceLink.metadata`（无行明细表） | 冻结为 `TraceLink(Part→PO, ordered_by).metadata.quantity`（§2.2）；缺失 `quantity` 视为 0 并告警 |
 | **OI-4** | ECN 生效时间粒度 | `effective_date` 为 `date` | 冻结为"按自然日、含当日生效"（GT-ECN-002） |
 | **OI-5** | 展开/影响是否自动应用未生效 ECN | 未明确 | 冻结为"仅 `approved`/`implemented` 且 `effective_date ≤ as_of_date` 生效；`null` 不生效"（§2.3） |
+| **OI-6** ✅ 已决议 | 选型评分硬过滤后候选 **0** 个（不满足 AC-004 "≥3"） | `fixtures/demo_seed.json` 20 个 `Part` 中，仅 `PART-001`/`PART-002` 同时满足电压 9–36V + 电流 ≥5A + 温度 −40~85°C，但**均缺 `ip_rating` 参数**；其余料普遍缺关键参数；`lifecycle_status` 仅取 `active`/`obsolete`（无 `discontinued` 字面值），`supplier_parts` 另有 `nrnd`/`eol` | **已冻结（2026-10-04）**：采纳选项 (a) = **补齐 fixture 关键参数**（人工放行修数据）。`PART-001`/`PART-002` 补 `ip_rating=IP65`；`PART-018` 补完整关键参数；`PART-011`/`PART-012` 补参数但分别因电流（`3A`）/ 温度（`-20~70°C`）不足被阈值排除；新增 `SP-011`~`SP-013` 使多源有区分度；`PART-017`（`obsolete`）保留不补参数，作为 lifecycle 排除载体。lifecycle 映射冻结为 `Part ∈ {obsolete, discontinued}` 排除、`SupplierPart eol` 排除渠道、`nrnd` 保留 + `warning`。修数据后阶段 1 通过 **3** 个（`PART-002`/`PART-001`/`PART-018`），Top3 分数 `94.79 / 87.24 / 0.00`（详见 GT-BOM-009）。规则 `status = frozen`，见 ADR-0005 |
 
 ---
 
@@ -522,7 +581,8 @@
 
 | 强制覆盖项 | 是否覆盖 | 用例 |
 | --- | --- | --- |
-| 多层 BOM 父子展开 | 是 | GT-BOM-001/002/003/004 |
+| 多层 BOM 父子展开 | 是 | GT-BOM-001/002/003/004/007 |
+| 选型评分 Top3 排序（规则 v1） | 是 | GT-BOM-008/009 |
 | 替代料组 | 是 | GT-KIT-004/008 |
 | 库存批次部分占用 | 是 | GT-KIT-002/007 |
 | 在途 PO 最晚到货日 | 是 | GT-KIT-003/008 |
@@ -532,4 +592,4 @@
 | LLM 非法 JSON / 缺字段 / 幻觉 ID | 是 | GT-JSON-002/003/005 |
 | 序列号查不到返回空链 | 是 | GT-TRACE-003 |
 
-> 5 个必测域（BOM 展开 / 齐套缺料 / ECN 影响 / LLM JSON 校验 / TraceLink 反查）全部覆盖，共 **35 条**用例：BOM 6、KIT 8、ECN 6、JSON 8、TRACE 7。
+> 5 个必测域（BOM 展开 / 齐套缺料 / ECN 影响 / LLM JSON 校验 / TraceLink 反查）全部覆盖，共 **38 条**用例：BOM 9、KIT 8、ECN 6、JSON 8、TRACE 7。

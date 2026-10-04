@@ -27,6 +27,7 @@
 - **fixture 自洽（R8）**：`fixtures/demo_seed.json` 中每个条目的 `id` **必须等于**该实体业务编号字段的值（**逐值照搬、不得重编号**）；`scripts/validate_seed.py` 对此强制断言。
 - **格式与解析（R9）**：业务编号稳定、可读、带类型前缀（`TYPE-NNN` 为缺省风格；`SN-*` / `LOT-*` / 提交 SHA 属天然标识，不受前缀风格约束）；**不设严格正则**（`SN-DEMO-001` 合法）。解析规则统一为 `(project_id, entity_type, business_no)` 唯一定位，**D2 引用存在性核验与 TraceLink 端点解析共用同一规则**。
 - **多态端点白名单**：仅下表「端点=是」的业务编号实体可作 `TraceLink.from_id/to_id`、`ECNImpact.affected_id`、`TraceNode.node_type`（与 `schemas/agent_outputs.py` 的 `EntityType` **一一对应**）。`User`/`Project` 仅经 FK 关联；`AgentRun`/`TraceLink` 为审计记录；明细表（`PartParam`/`RequirementParam`/`SupplierPart`/`ECNImpact`）随父行定位——均**不作多态端点**。
+- **明细表无业务编号（§A-2）**：`PartParam` / `RequirementParam` / `SupplierPart` / `ECNImpact` **无独立业务编号**（fixture 中的 `PP-*` / `RP-*` / `SP-*` / `EI-*` 仅为集合内 `id`，**非** R2/R9 意义上的对外业务编号），因此**不可作为多态引用目标**（不得出现在 `TraceLink.from_id/to_id`、`ECNImpact.affected_id`、`TraceNode.node_id`），**也不可作为任何 URL 的 `<id>`**，一律经父行 FK 定位。**唯一例外**：`ECNImpact.affected_id` 是**指向端点实体的出站多态引用**（取被影响实体的业务编号，按 T1.3 规则），**不是 ECNImpact 自身的编号**，二者不可混淆。
 - **加载与反解（R8）**：`fixtures/` 用业务编号互引，加载器负责解析为 pk。
 
 **业务编号字段（冻结）**：
@@ -50,7 +51,7 @@
 | User | 否 | —（`username` 为登录名） | — | — | — |
 | GitRepo | 否 | —（`name` 为仓库名） | — | — | — |
 | TraceLink / AgentRun | 否 | —（审计记录，内部主键不对接多态） | — | — | — |
-| 明细表 PartParam / RequirementParam / SupplierPart / ECNImpact | 否 | —（随父行定位，无独立业务编号） | — | — | — |
+| 明细表 PartParam / RequirementParam / SupplierPart / ECNImpact | 否 | —（随父行定位，无独立业务编号；不可作多态目标 / URL `<id>`，`ECNImpact.affected_id` 为出站引用例外） | — | — | —（无） |
 
 > - **清点结论（R7，2026-10-04）**：全实体**无「双编号被同时承重」**情形。端点实体的业务编号字段值 **均等于 fixture `id`**（`validate_seed.py` 逐值断言，实测 0 处不一致）；`Project`/`User`/`GitRepo` 的 `code`/`username`/`name` 为**属性字段，非多态编号**，不参与 R7 清点。
 > - `InventoryLot` 以 `serial_number`（批次号 / 序列号）作业务编号；`TraceLink`/`ECNImpact` 对库存批次的引用一律用 `serial_number`（**不再使用 `INV-###`**）。

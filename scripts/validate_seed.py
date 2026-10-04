@@ -150,9 +150,9 @@ COUNT_EQUALS = {
     "purchase_orders": 5,
     "inventory_lots": 3,
     "ecns": 2,
+    "test_runs": 12,
 }
 COUNT_MIN = {
-    "test_runs": 10,
     "part_params": 30,
     "boms": 1,
     "git_commits": 3,

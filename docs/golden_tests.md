@@ -90,7 +90,7 @@
 - 每个 `TraceNode` 必须带 `source_refs`；`confirmed_by_id IS NULL` 的链**不进入结果**。
 - 链路断点写入 `missing`（如 `"no_purchase_order"`, `"no_test_run"`）。
 - **查不到序列号 → `found=false` 空链，禁止编造**：`found = false`、`complete = false`、`nodes = []`、`edges = []`、`missing = ["serial_not_found"]`、`warnings` 含 `"serial_not_found"`；先查库判定 `found`，未命中**短路返回、不调用 LLM**。
-- **根实体存在但无 TraceLink**：`found = true`、`nodes` 含根节点自身、`warnings` 含 `"未建立追溯链"`（**不是空链**）。
+- **根实体存在但无 TraceLink**：`found = true`、`complete = false`、`nodes` 含根节点自身、`missing = ["no_trace_links"]`（机器 token）、`warnings` 含 `"未建立追溯链"`（人类可读镜像，不作机器判定依据）（**不是空链**）。
 - 结果去重、稳定排序、防环。
 
 ---

@@ -55,6 +55,7 @@
 - 正向：空结果不再被误判为失败；幻觉 ID 在结构校验后被独立拦截；审计只记录真实 LLM 调用。
 - 负向 / 成本：需维护 `EntityType` 白名单与 `(project_id, entity_type, business_no)` 解析规则，D2 引用核验与 TraceLink 端点解析共用同一规则。
 - 本 ADR 只冻结契约，不写业务逻辑、不做迁移。
+
 ## Amendment（2026-10-04，复检后裁决）
 
 - **原条款（T2.10 初稿）**：`found=false ⇒ missing=[]`。

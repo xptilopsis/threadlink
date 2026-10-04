@@ -171,8 +171,11 @@
 | lead_time_days | integer | 否 | 交期（天） |
 | moq | integer | 否 | 最小起订量 |
 | is_preferred | boolean | 是 | 是否优选，默认 false |
+| lifecycle_status | varchar(16) | 是 | active / nrnd / eol / obsolete，默认 active；**渠道级生命周期**（eol=渠道排除；nrnd=保留 + warning，v1 不降权，见 `rules/bom_scoring.v1.json`） |
 | created_at | timestamptz | 是 | 创建时间 |
 | updated_at | timestamptz | 是 | 更新时间 |
+
+> **补录说明（2026-10-04，D2 前置修正）**：`lifecycle_status` 为 **post-freeze 补录字段**——fixture（SP-001…SP-013 实际取值 `active`/`nrnd`/`eol`/`obsolete`）与 `rules/bom_scoring.v1.json`（`supplier_lifecycle`）、`docs/adr/0005-bom-scoring-v1-frozen.md`（渠道级 eol 排除 / nrnd warning）均以该字段承重，而原 §6 遗漏。类型 / 长度对齐同域 `Part.lifecycle_status`，默认值取 `active`。**仅新增、不删改既有字段**，依据见 `docs/adr/0007-d2-schema-implementation-notes.md`。
 
 ---
 

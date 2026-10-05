@@ -16,6 +16,7 @@ db.sqlite3
 db.sqlite3-journal
 media/
 staticfiles/
+.data/
 
 # Environment variables / secrets
 .env

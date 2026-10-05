@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -233,6 +234,17 @@ class Validator:
                         f"{coll}: id 与业务编号字段不一致 id={rid!r} {field}={value!r}（R8）"
                     )
 
+    def check_git_commit_sha(self) -> None:
+        """git_commits.sha 必须是 40 位小写十六进制（真实提交 SHA）。"""
+        pattern = re.compile(r"^[0-9a-f]{40}$")
+        for row in self.rows("git_commits"):
+            sha = row.get("sha")
+            if not isinstance(sha, str) or not pattern.match(sha):
+                self.fail(
+                    f"git_commits {row.get('id')}: sha 非法 {sha!r}"
+                    f"（须匹配 ^[0-9a-f]{{40}}$）"
+                )
+
     def check_user_roles(self) -> None:
         """T2.4：每个 ``user.role`` 必须落在冻结职能枚举内；users 不得含冗余 flags 键。"""
         for row in self.rows("users"):
@@ -356,6 +368,7 @@ class Validator:
         self.build_index()
         self.check_ids_unique()
         self.check_bizno_equals_id()
+        self.check_git_commit_sha()
         self.check_user_roles()
         self.check_fk_refs()
         self.check_polymorphic()

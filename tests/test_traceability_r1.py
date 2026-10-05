@@ -38,7 +38,7 @@ def project(seeded):
     return Project.objects.get(code="DEMO-GW")
 
 
-GIT_SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+GIT_SHA = "e4738a67bbe0fec85fe2e5b9258c533270b5e00f"
 
 RESOLVE_CASES = [
     ("part", "PART-001", "part_number"),

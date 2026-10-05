@@ -469,7 +469,7 @@
 - **When** `GET /trace/serial/SN-DEMO-001/`
 - **Then** 返回"需求→BOM→物料批次→采购单→测试→ECN→Git 提交"链路，含引用
 - **输入**：`sn = SN-DEMO-001`, `direction = backward`
-- **期望**：节点含 `REQ-001`、`BOM-001`、`SN-DEMO-001`、`PO-002`、`TR-001`、`ECN-001`、`b2c3d4e5f60718293a4b5c6d7e8f90123456789a`（该 GitCommit 的提交 SHA）；每个 `TraceNode.source_refs` 非空；`edges` 关系语义正确（`implemented_by`/`sourced_from`/`tested_by`/`affects`/`evidences`/`replaces`）；`found == true`、`complete == true`、`missing == []`
+- **期望**：节点含 `REQ-001`、`BOM-001`、`SN-DEMO-001`、`PO-002`、`TR-001`、`ECN-001`、`c6b024f590785d23aa5ebb52693bb63fc1655519`（该 GitCommit 的提交 SHA）；每个 `TraceNode.source_refs` 非空；`edges` 关系语义正确（`implemented_by`/`sourced_from`/`tested_by`/`affects`/`evidences`/`replaces`）；`found == true`、`complete == true`、`missing == []`
 - **边界**：`depth = 1` → 仅返回距起点 1 跳的节点；`direction = forward` → 反向展开
 
 #### GT-TRACE-002 未确认链过滤

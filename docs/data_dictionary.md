@@ -254,8 +254,11 @@
 | position | varchar(64) | 否 | 位置 / 装配位 |
 | is_critical | boolean | 是 | 是否关键件，默认 false |
 | notes | text | 否 | 备注 |
+| substitute_group | varchar(64) | 否 | **替代料组标签**（同组候选可互换），如 `SG-SEL-<agent_run_id>`；受控扩展字段，见 ADR-0012 |
 | created_at | timestamptz | 是 | 创建时间 |
 | updated_at | timestamptz | 是 | 更新时间 |
+
+> **补录说明（2026-10-05，D6-R3 受控扩展）**：`substitute_group` 为 **post-D2-freeze 受控扩展字段**——D12 覆盖要求明文含「替代料组」、D13 演示「替代可行项」依赖组语义，而原 §10 遗漏该载体；经人工裁决按 D2 先例（`Part.lifecycle_status` 拆分，`core/0003`）受控添加。类型 / 长度对齐同域 `position`（`varchar(64)`）、`blank=True default=""`、**无唯一约束、无索引**。**仅新增、不删改既有字段**，依据见 `docs/adr/0012-bom-selection-agent.md`。
 
 ---
 

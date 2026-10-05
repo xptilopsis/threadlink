@@ -17,7 +17,7 @@ from agents.bom_selection import (
     run_bom_selection_agent,
 )
 from agents.models import AgentRun
-from core.models import Project, Requirement, User
+from core.models import Bom, Project, Requirement, User
 from core.selection import Criteria
 
 
@@ -79,10 +79,18 @@ def test_pipeline_engine_authoritative(monkeypatch, seeded, project):
     assert summary["ok"] is True
     output = summary["output"]
     assert [c["part_number"] for c in output["candidates"]] == ["PART-002", "PART-001", "PART-018"]
-    # 引擎权威：score 由引擎 total_score/100 提供，LLM 未参与
+    # 引擎权威：score 由引擎 total_score/100 提供（4 位归整），LLM 未参与
     assert output["candidates"][0]["score"] == pytest.approx(0.9479, abs=1e-6)
     assert output["candidates"][1]["score"] == pytest.approx(0.8724, abs=1e-6)
+    # 严格：4 位归整、无浮点噪声（D6-R3 修复）
+    assert str(output["candidates"][0]["score"]) == "0.9479"
+    assert str(output["candidates"][1]["score"]) == "0.8724"
+    assert str(output["candidates"][2]["score"]) == "0.0"
     assert output["candidates"][0]["unit_price"] == "45.0000"
+    # AC-004：每候选 source_refs 非空且为**引擎权威派生**（type=part, id=part_number）
+    for candidate in output["candidates"]:
+        refs = candidate["source_refs"]
+        assert refs and refs[0]["type"] == "part" and refs[0]["id"] == candidate["part_number"]
     assert output["candidates"][0]["lead_time_days"] == 14
     assert output["recommended_part_id"] == "PART-002"
     # LLM 只提供文案
@@ -129,13 +137,31 @@ def _post_action(client, user, run, action):
     )
 
 
-def test_dispatch_bom_approve_not_implemented(seeded, client, project):
-    run = _make_run(project)
+def test_dispatch_bom_approve_creates_bom(seeded, client, project):
+    output_json = {
+        "agent_name": "bom_selection",
+        "request_params": [],
+        "candidates": [
+            {
+                "part_number": "PART-002",
+                "name": "P2",
+                "lifecycle_status": "active",
+                "score": 0.9479,
+                "rationale": "r",
+                "source_refs": [{"type": "part", "id": "PART-002"}],
+            }
+        ],
+        "recommended_part_id": "PART-002",
+        "trace_refs": [],
+        "warnings": [],
+    }
+    run = _make_run(project, output_json=output_json)
     response = _post_action(client, seeded, run, "approve_selected")
     assert response.status_code == 200
-    assert "未实现" in response.content.decode()
+    content = response.content.decode()
+    assert "已批准" in content and "BOM" in content
     run.refresh_from_db()
-    assert run.status == "needs_review"  # 无写入
+    assert run.status == "success"  # D6-R3：bom_selection approve 已实现（建 draft BOM）
 
 
 def test_dispatch_bom_reject_works(seeded, client, project):
@@ -189,3 +215,29 @@ def test_command_fake_smoke(monkeypatch, settings, seeded):
     before = AgentRun.objects.count()
     call_command("run_bom_selection", "--project", "DEMO-GW")
     assert AgentRun.objects.count() == before  # fake 不落库
+
+def test_pipeline_source_refs_engine_authoritative(monkeypatch, seeded, project):
+    """LLM 载荷无法覆盖 / 伪造 source_refs —— 由引擎权威派生（type=part, id=<part_number>）。"""
+
+    from agents import bom_selection as module
+
+    parsed = _explanation(
+        [
+            {"part_number": "PART-002", "rationale": "r", "replaces_part_id": "PART-017"},
+            {"part_number": "PART-001", "rationale": "r"},
+            {"part_number": "PART-018", "rationale": "r"},
+        ]
+    )
+    run = _make_run(project)
+    monkeypatch.setattr(
+        module.llm,
+        "call_json",
+        lambda *a, **k: llm.CallResult(parsed, "", None, 0.0, "json_object", agent_run=run),
+    )
+    output = run_bom_selection_agent(project, Criteria(), seeded)["output"]
+    for candidate in output["candidates"]:
+        assert candidate["source_refs"] == [
+            {"type": "part", "id": candidate["part_number"], "locator": None, "snippet": None}
+        ]
+    # replaces 建议：PART-017 存在于项目（obsolete，在排除清单内）→ 核验通过
+    assert output["candidates"][0]["replaces_part_id"] == "PART-017"

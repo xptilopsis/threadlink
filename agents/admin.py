@@ -56,14 +56,24 @@ class AgentRunAdmin(admin.ModelAdmin):
         done = skipped = 0
         created = []
         for run in queryset:
-            # 按 agent_name 派发（D6-R2 §3.1）
+            # 按 agent_name 派发（D6-R2 §3.1；bom_selection approve → D6-R3 服务）
             if run.agent_name == "bom_selection" and action == "approve":
-                skipped += 1
-                self.message_user(
-                    request,
-                    f"#{run.pk} bom_selection 确认流程未实现（D6-R3）",
-                    level=messages.WARNING,
-                )
+                from agents.bom_selection import approve_bom_selection
+
+                try:
+                    result = approve_bom_selection(run, request.user)
+                    done += 1
+                    self.message_user(
+                        request,
+                        f"#{run.pk} 已批准：BOM {result['bom_no']}，"
+                        f"{result['items']} 项，{result['links']} 条替代链接",
+                    )
+                except ConfirmationError as exc:
+                    skipped += 1
+                    self.message_user(request, f"#{run.pk} 跳过：{exc}", level=messages.WARNING)
+                except Exception as exc:  # noqa: BLE001
+                    skipped += 1
+                    self.message_user(request, f"#{run.pk} 处置异常：{exc}", level=messages.ERROR)
                 continue
             if run.agent_name not in ("requirement", "bom_selection"):
                 skipped += 1  # 未知 agent_name → 跳过

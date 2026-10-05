@@ -500,6 +500,12 @@ class BomItem(NumberedModel):
     ref_des = models.CharField(max_length=255, blank=True)
     position = models.CharField(max_length=64, blank=True)
     is_critical = models.BooleanField(default=False)
+    substitute_group = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="替代料组标签（同组候选可互换），如 SG-SEL-<agent_run_id>（D6-R3 受控扩展，见 ADR-0012）",
+    )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)

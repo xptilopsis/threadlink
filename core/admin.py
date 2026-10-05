@@ -243,7 +243,7 @@ class BomAdmin(admin.ModelAdmin):
 
 @admin.register(BomItem)
 class BomItemAdmin(admin.ModelAdmin):
-    list_display = ("item_no", "bom", "parent_item", "part", "quantity", "unit")
+    list_display = ("item_no", "bom", "parent_item", "part", "quantity", "unit", "substitute_group")
     list_filter = ("bom", "part")
     search_fields = ("item_no", "part__part_number")
 

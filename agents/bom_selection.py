@@ -25,17 +25,21 @@ from django.utils import timezone
 from pydantic import BaseModel, Field
 
 from agents import llm
+from agents.confirmation import ConfirmationError
 from agents.models import AgentRun
 from agents.verification import verify_references
-from core.models import Part
+from core.models import Bom, BomItem, BomStatus, Part
 from core.selection import Criteria, select
 from schemas.agent_outputs import (
     AgentName,
     BomCandidate,
     BomSelectionAgentOutput,
+    LinkSource,
     Param,
     SourceRef,
+    TraceRelationType,
 )
+from traceability.models import TraceLink
 
 PROMPT_ID = "prompt.bom.selection"
 PROMPT_VERSION = "v1"
@@ -133,10 +137,10 @@ def _build_output(project, criteria: Criteria, engine_result, explanation: BomEx
                 discontinued=(part.lifecycle_status in ("obsolete", "discontinued")) if part else False,
                 unit_price=candidate.min_price,
                 lead_time_days=candidate.min_lead,
-                score=float(candidate.total_score) / 100,
+                score=round(float(candidate.total_score) / 100, 4),
                 replaces_part_id=(item.replaces_part_id if item else None),
                 rationale=rationale,
-                source_refs=[],
+                source_refs=[SourceRef(type="part", id=candidate.part_number)],
             )
         )
 
@@ -209,6 +213,7 @@ def run_bom_selection_agent(project, criteria: Criteria, user, *, model=None, te
             reference_check_passed=False,
             status="failed",
             invalid_references=payload,
+            output_json=output.model_dump(mode="json"),  # 落合并结果（引擎权威 + LLM 文案）
         )
         return {
             "ok": False,
@@ -218,7 +223,10 @@ def run_bom_selection_agent(project, criteria: Criteria, user, *, model=None, te
             "output": output.model_dump(mode="json"),
         }
 
-    AgentRun.objects.filter(pk=run.pk).update(reference_check_passed=True)
+    AgentRun.objects.filter(pk=run.pk).update(
+        reference_check_passed=True,
+        output_json=output.model_dump(mode="json"),  # 落合并结果（引擎权威 + LLM 文案）
+    )
     return {
         "ok": True,
         "agent_run_id": run.pk,
@@ -226,3 +234,83 @@ def run_bom_selection_agent(project, criteria: Criteria, user, *, model=None, te
         "recommended": output.recommended_part_id,
         "output": output.model_dump(mode="json"),
     }
+
+def approve_bom_selection(agent_run, user):
+    """批准 ``bom_selection`` 运行 → 初版 BOM（draft ``Bom`` + 逐候选 ``BomItem`` + ``replaces`` TraceLink）。
+
+    - 前置：``status==needs_review`` 且 ``reference_check_passed is True``（``refresh_from_db`` 后判定）；
+    - 共享 ``substitute_group = SG-SEL-<agent_run_id>``；``Bom.version = v0.1-sel-<agent_run_id>``（避开唯一约束）；
+    - 候选 ``replaces_part_id`` → ``TraceLink``（part→part, relation=``replaces``, source=``agent``，完全同元组去重）；
+    - 同一行更新 ``status=success``、``confirmed_by/at``；**幂等 / 回滚 / AgentRun 计数不变**。
+    """
+
+    agent_run.refresh_from_db()
+    if agent_run.status != "needs_review":
+        raise ConfirmationError(
+            f"不可确认：当前 status={agent_run.status!r}（须为 needs_review）"
+        )
+    if agent_run.reference_check_passed is not True:
+        raise ConfirmationError(
+            f"不可确认：reference_check_passed={agent_run.reference_check_passed!r}（须为 True）"
+        )
+
+    payload = BomSelectionAgentOutput.model_validate(agent_run.output_json or {})
+    project = agent_run.project
+    group = f"SG-SEL-{agent_run.pk}"
+    now = timezone.now()
+
+    with transaction.atomic():
+        bom = Bom.objects.create(
+            project=project,
+            name=f"选型初版（run {agent_run.pk}）",
+            version=f"v0.1-sel-{agent_run.pk}",
+            status=BomStatus.DRAFT,
+            created_by=user,
+        )
+        link_count = 0
+        for candidate in payload.candidates:
+            part = Part.objects.filter(
+                project=project, part_number=candidate.part_number
+            ).first()
+            if part is None:
+                raise ConfirmationError(f"候选物料不存在：{candidate.part_number}")
+            BomItem.objects.create(
+                bom=bom, part=part, quantity=1, substitute_group=group
+            )
+            if candidate.replaces_part_id:
+                target = Part.objects.filter(
+                    project=project, part_number=candidate.replaces_part_id
+                ).first()
+                if target is None:
+                    raise ConfirmationError(
+                        f"被替代物料不存在：{candidate.replaces_part_id}"
+                    )
+                exists = TraceLink.objects.filter(
+                    project=project,
+                    from_type="part",
+                    from_id=candidate.part_number,
+                    to_type="part",
+                    to_id=candidate.replaces_part_id,
+                    relation_type=TraceRelationType.REPLACES.value,
+                ).exists()
+                if not exists:
+                    TraceLink.objects.create(
+                        project=project,
+                        from_type="part",
+                        from_id=candidate.part_number,
+                        to_type="part",
+                        to_id=candidate.replaces_part_id,
+                        relation_type=TraceRelationType.REPLACES.value,
+                        source=LinkSource.AGENT.value,
+                        agent_run=agent_run,
+                        confirmed_by=user,
+                        confirmed_at=now,
+                        created_by=user,
+                    )
+                    link_count += 1
+
+        AgentRun.objects.filter(pk=agent_run.pk).update(
+            status="success", confirmed_by=user, confirmed_at=now
+        )
+
+    return {"bom_no": bom.bom_no, "items": len(payload.candidates), "links": link_count}

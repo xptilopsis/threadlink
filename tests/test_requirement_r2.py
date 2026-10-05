@@ -177,7 +177,7 @@ def test_live_demo_email_end_to_end(seeded, project):
     before_link = TraceLink.objects.count()
     summary = run_requirement_agent(project, document, seeded)
     assert summary["ok"] is True
-    assert summary["cards"] >= 1  # 下限；本机跑 3 次后按分布固化
+    assert summary["cards"] >= 5  # 固化：本机 3 次实测均 cards=5（D5-R2 收口）
     assert AgentRun.objects.count() == before_run + 1
     run = AgentRun.objects.get(pk=summary["agent_run_id"])
     assert run.status == "needs_review"

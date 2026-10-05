@@ -5,10 +5,13 @@ from django.utils.html import format_html
 from core.models import (
     Bom,
     BomItem,
+    ECN,
+    ECNImpact,
     InventoryLot,
     Part,
     PartParam,
     Project,
+    PurchaseOrder,
     Requirement,
     RequirementParam,
     Supplier,
@@ -16,6 +19,7 @@ from core.models import (
     TestCase,
     TestRun,
     User,
+    WorkOrder,
 )
 
 
@@ -258,3 +262,56 @@ class InventoryLotAdmin(admin.ModelAdmin):
             relation_type="sourced_from",
         ).values_list("to_id", flat=True)
         return ", ".join(targets) or "-"
+
+# ---------------------------------------------------------------------------
+# D3-R3：PurchaseOrder / WorkOrder
+# ---------------------------------------------------------------------------
+
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(admin.ModelAdmin):
+    list_display = (
+        "po_number",
+        "supplier",
+        "status",
+        "order_date",
+        "expected_date",
+        "total_amount",
+        "currency",
+    )
+    list_filter = ("status", "supplier")
+    search_fields = ("po_number",)
+    date_hierarchy = "order_date"
+
+
+@admin.register(WorkOrder)
+class WorkOrderAdmin(admin.ModelAdmin):
+    list_display = ("code", "bom", "quantity", "status", "due_date")
+    list_filter = ("status",)
+    search_fields = ("code",)
+
+
+# ---------------------------------------------------------------------------
+# D3-R3：ECN / ECNImpact
+# ---------------------------------------------------------------------------
+
+
+class ECNImpactInline(admin.TabularInline):
+    model = ECNImpact
+    extra = 0
+    fields = ("affected_type", "affected_id", "impact_type", "description")
+
+
+@admin.register(ECN)
+class ECNAdmin(admin.ModelAdmin):
+    list_display = ("ecn_number", "title", "status", "effective_date")
+    list_filter = ("status",)
+    search_fields = ("ecn_number", "title")
+    inlines = [ECNImpactInline]
+
+
+@admin.register(ECNImpact)
+class ECNImpactAdmin(admin.ModelAdmin):
+    list_display = ("ecn", "affected_type", "affected_id", "impact_type")
+    list_filter = ("affected_type", "impact_type")
+    search_fields = ("ecn__ecn_number", "affected_id")

@@ -163,7 +163,7 @@ def test_live_connectivity_and_schema(seeded, project):
         [{"role": "user", "content": 'Return exactly {"ok": true} as JSON.'}],
         "smoke",
         "v1",
-        max_tokens=64,
+        max_tokens=512,
         project=project,
         agent_name="requirement",
     )

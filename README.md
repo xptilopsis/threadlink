@@ -168,18 +168,21 @@ LLM_BACKEND=openai          # 断网开发可设 fake（从 tests/fixtures/llm_f
 LLM_TIMEOUT=30
 LLM_MAX_RETRIES=2
 LLM_STRUCTURED_MODE=auto    # auto 时 json_schema → json_object 自动降级
+LLM_EXTRA_BODY=             # 通用 provider 参数（JSON，经 extra_body 透传）；留空即 OpenAI 原生
 ```
 
 运行：
 
 ```cmd
-python scripts\llm_preflight.py     :: 连通预检：打印 model / 延迟 / 用量
-python -m pytest -q                 :: 全套（含 live）
-python -m pytest -q -m "not live"   :: 断网/无 key 逃生（跳过真实调用）
+python scripts\llm_preflight.py                    :: 连通预检：model / 延迟 / 用量，断言 content 非空
+python scripts\llm_preflight.py --probe-reasoning  :: 三组探测推理档位（基线 / thinking=enabled+low / disabled）
+python -m pytest -q                                :: 全套（含 live）
+python -m pytest -q -m "not live"                  :: 断网/无 key 逃生（跳过真实调用）
 ```
 
 要点：
 
 - live 用例会**真实调用模型**并落 `AgentRun`；注意用量与成本（默认 `temperature=0`、`max_tokens` 保守）。
 - Pydantic 校验为唯一成功判据；provider 不支持 `json_schema` 时自动降级 `json_object`（记录实际模式）。
+- **推理档位**：若 provider 为思考模型（如 DeepSeek `deepseek-flash`），reasoning tokens 计入 `max_tokens`，小配额会耗尽预算致 `content` 为空；用 `--probe-reasoning` 找到「reasoning_tokens 趋零 + content 非空」的配置，写入 `LLM_EXTRA_BODY`（通用注入，无代码特判）。
 - 配置缺失 fail-loud（报错含变量名），不静默跳过、不产生 `AgentRun`。

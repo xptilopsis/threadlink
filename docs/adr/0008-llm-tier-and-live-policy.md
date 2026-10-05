@@ -56,6 +56,35 @@ D1–D4 约束「不调用真实 OpenAI」；**D5 起默认真实调用 LLM（li
 - **R-2 边界用例迁移**：非法 JSON / 缺字段属 API 返回体异常，落 **T2 transport**（而非 live）；D12 验收语言据此备注。
 - **R-3 DeepSeek 无快照 id**：DeepSeek 等 provider 不提供日期快照模型 id，跨时点可复现性弱于 OpenAI 快照；演示以「单机可复现 + 记录实际 model id」为准（`AgentRun.model` 记录实际值）。
 
+## 补充（2026-10-05）：provider 适配与推理档位
+
+### json_schema → json_object 降级（已实证）
+
+本机 live 取证（DeepSeek 兼容端点）观测到：`response_format={"type":"json_schema"}` 不被支持，客户端**自动降级 `json_object` 重发一次**，`structured_mode` 记录实际模式 `json_object` —— 降级策略**真实生效**。最终仍以 Pydantic 校验（`model_validate`）为唯一成功判据。
+
+### extra_body 配置注入（通用，无代码特判）
+
+新增 `LLM_EXTRA_BODY`（JSON 字符串）→ 经 OpenAI SDK `extra_body=` 透传；**不在代码中写死任何 provider 特判**，切回 OpenAI 只需置空。`agents/llm.py` 的 `fake` 后端忽略该参数。
+
+### 推理档位探测（本机人工，沙箱无出网）
+
+思考模型（reasoning model）把 reasoning tokens 计入 `max_tokens`：本机预检观测 `max_tokens=32` 时 `reasoning_tokens=32`、`content=''`、`finish_reason=length`，导致连通冒烟假失败。探测命令：
+
+```cmd
+python scripts\llm_preflight.py --probe-reasoning
+```
+
+三组：基线 / `thinking={"type":"enabled"}` + `reasoning_effort="low"` / `thinking={"type":"disabled"}`；成功标准 = **reasoning_tokens 趋零且 content 非空**。
+
+### 生产推荐配置
+
+> **待本机探测结果回填**：定稿的 `thinking` / `reasoning_effort` 合法值（以官方文档为准）写入 `.env` 的 `LLM_EXTRA_BODY`，并同步 `.env.example` 推荐值与 README。探测前 `.env.example` 示例为 `LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`（占位，待确认）。
+
+### preflight 与测试口径
+
+- `scripts/llm_preflight.py`：加载生产配置（含 `extra_body`）、**断言 `content` 非空**、打印 `reasoning_tokens`（杜绝此前「content 空仍报 OK」的假通过）。
+- `tests/test_llm_r1.py` live connectivity：`max_tokens=512` 仅作防御性余量，**根因按配置消除**（不再依赖"预算够大"）。
+
 ## 后果
 
 - 正向：live 为默认，真实行为可被持续验证；T2/T3 让无网环境仍可验证解析/校验代码；provider 自适应避免绑定单一端点能力。

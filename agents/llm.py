@@ -178,10 +178,31 @@ def _classify(exc: Exception, structured_mode: str, raw: str | None = None) -> L
     return TransportError(f"{type(exc).__name__}: {exc}", raw=raw, structured_mode=structured_mode)
 
 
-def _request(client, schema_model, messages, model, temperature, max_tokens, mode):
+def _extra_body() -> dict | None:
+    """解析 ``settings.LLM_EXTRA_BODY``（JSON 字符串）→ dict；空则 None。
+
+    通用 provider 参数注入（不写死任何 provider 特判）；非法 JSON → ``LLMConfigError``
+    （本地配置错误，不落 AgentRun）。fake 后端不读取本项。
+    """
+
+    raw = (getattr(settings, "LLM_EXTRA_BODY", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise LLMConfigError(f"LLM_EXTRA_BODY 不是合法 JSON：{exc}")
+    if not isinstance(data, dict):
+        raise LLMConfigError("LLM_EXTRA_BODY 必须是 JSON 对象")
+    return data or None
+
+
+def _request(client, schema_model, messages, model, temperature, max_tokens, mode, extra_body=None):
     kwargs: dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature}
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
+    if extra_body:
+        kwargs["extra_body"] = extra_body
     if mode == "json_schema":
         kwargs["response_format"] = {
             "type": "json_schema",
@@ -247,11 +268,12 @@ def _call_openai(schema_model, messages, model, temperature, max_tokens, request
         timeout=settings.LLM_TIMEOUT,
     )
     mode = "json_schema" if requested_mode == "auto" else requested_mode
+    extra_body = _extra_body()
     response = None
     for attempt in range(settings.LLM_MAX_RETRIES + 1):
         try:
             response = _request(
-                client, schema_model, messages, model, temperature, max_tokens, mode
+                client, schema_model, messages, model, temperature, max_tokens, mode, extra_body
             )
             break
         except Exception as exc:  # noqa: BLE001
@@ -270,6 +292,7 @@ def _call_openai(schema_model, messages, model, temperature, max_tokens, request
                         temperature,
                         max_tokens,
                         mode,
+                        extra_body,
                     )
                     break
                 except Exception as exc2:  # noqa: BLE001

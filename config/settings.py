@@ -144,3 +144,6 @@ LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
 LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "30"))
 LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
 LLM_STRUCTURED_MODE = os.environ.get("LLM_STRUCTURED_MODE", "auto")
+# 通用 provider 参数注入（JSON 字符串，经 SDK extra_body 透传；如 DeepSeek
+# `{"thinking": {"type": "disabled"}}`）。切回 OpenAI 置空即可，零代码改动。
+LLM_EXTRA_BODY = os.environ.get("LLM_EXTRA_BODY", "")

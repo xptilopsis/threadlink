@@ -216,3 +216,19 @@ curl -X POST http://127.0.0.1:8000/agents/requirement/run/ ^
 ```
 
 断网开发可设 `LLM_BACKEND=fake`，从 `tests/fixtures/llm_fake/` 回放、**不落 AgentRun**。
+## 演示流程：确认（approve / reject，D5-R3）
+
+`needs_review` 的 AgentRun 经人工确认后**写实体**（Requirement + RequirementParam + TraceLink）或拒绝。
+
+操作：
+
+1. 打开 `/admin/agents/agentrun/`（过滤 `status=needs_review`）。
+2. 勾选待确认行 → 动作「批准（写 Requirement + TraceLink）」→ 消息「已批准 N 条，创建需求 REQ-00x、…」；或「拒绝（不写实体）」→ 状态转 `rejected`。
+3. 打开 `/admin/core/requirement/` 可见新建需求（`status=confirmed`、编号器自动 `REQ-###`）；`/admin/traceability/tracelink/` 可见 `requirement → document (derived_from)` 边。
+
+规则（详见 ADR-0010）：
+
+- 仅 `status=needs_review` **且** `reference_check_passed=True` 可处置；其余跳过并提示。
+- approve 全程事务：任一步失败整体回滚（保持 `needs_review`）；**不产生新 AgentRun 行**。
+- 幂等：对已处置行再次 approve/reject → 报错、不重复写实体。
+- 每卡对源 Document 写一条 `derived_from` TraceLink；卡片自带 `code` 不采用（编号器自动生成）。

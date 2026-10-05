@@ -1,7 +1,11 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.utils.html import format_html
 
 from core.models import (
+    Bom,
+    BomItem,
+    InventoryLot,
     Part,
     PartParam,
     Project,
@@ -75,6 +79,7 @@ class UserAdmin(BaseUserAdmin):
             ("ThreadLink", {"fields": ("role",)}),
         )
 
+
 # ---------------------------------------------------------------------------
 # D3-R1：Requirement / TestCase / TestRun
 # ---------------------------------------------------------------------------
@@ -139,3 +144,117 @@ class TestRunAdmin(admin.ModelAdmin):
     list_display = ("run_no", "test_case", "sample_serial", "result", "tested_at", "tester")
     list_filter = ("result", "tested_at")
     search_fields = ("run_no", "sample_serial")
+
+
+# ---------------------------------------------------------------------------
+# D3-R2：Bom 只读树视图 / BomItem / InventoryLot
+# ---------------------------------------------------------------------------
+
+BOM_TREE_INDENT_UNIT = "    "
+BOM_TREE_CYCLE_MARKER = "[CYCLE: {item_no}]"
+BOM_TREE_MAX_DEPTH = 50
+
+
+def build_bom_tree(items):
+    """把同一 BOM 的 BomItem 列表整理为 ``[(depth, item, state)]``。
+
+    规则：父先于子；``visited`` 集合防环（重复节点标 ``state="cycle"``）；
+    深度上限 ``BOM_TREE_MAX_DEPTH``。纯函数，只用传入的 ``items``。
+    未被根到达的节点（孤儿 / 环起点）从 ``depth=0`` 起补渲染。
+    """
+
+    children = {}
+    for item in items:
+        children.setdefault(item.parent_item_id, []).append(item)
+
+    rows = []
+    visited = set()
+
+    def walk(parent_pk, depth):
+        if depth > BOM_TREE_MAX_DEPTH:
+            return
+        for item in children.get(parent_pk, []):
+            if item.pk in visited:
+                rows.append((depth, item, "cycle"))
+                continue
+            visited.add(item.pk)
+            rows.append((depth, item, "ok"))
+            walk(item.pk, depth + 1)
+
+    walk(None, 0)
+    for item in items:
+        if item.pk in visited:
+            continue
+        visited.add(item.pk)
+        rows.append((0, item, "ok"))
+        walk(item.pk, 1)
+    return rows
+
+
+def render_bom_tree(rows):
+    """把 ``build_bom_tree`` 结果渲染为 ``<pre>`` 只读文本（缩进 + 环标记）。"""
+
+    lines = []
+    for depth, item, state in rows:
+        indent = BOM_TREE_INDENT_UNIT * depth
+        if state == "cycle":
+            lines.append(
+                f"{indent}{BOM_TREE_CYCLE_MARKER.format(item_no=item.item_no)} "
+                f"{item.item_no}"
+            )
+            continue
+        parent = item.parent_item.item_no if item.parent_item_id else "-"
+        part = item.part.part_number if item.part_id else "-"
+        lines.append(
+            f"{indent}{item.item_no} | {part} | x{item.quantity} | parent={parent}"
+        )
+    return format_html("<pre>{}</pre>", "\n".join(lines))
+
+
+@admin.register(Bom)
+class BomAdmin(admin.ModelAdmin):
+    list_display = ("bom_no", "name", "version", "status", "created_at")
+    list_filter = ("status",)
+    search_fields = ("bom_no", "name")
+    readonly_fields = ("bom_tree",)
+
+    @admin.display(description="BOM 树（只读）")
+    def bom_tree(self, obj):
+        if obj is None:
+            return "-"
+        items = list(obj.items.select_related("part", "parent_item").order_by("id"))
+        return render_bom_tree(build_bom_tree(items))
+
+
+@admin.register(BomItem)
+class BomItemAdmin(admin.ModelAdmin):
+    list_display = ("item_no", "bom", "parent_item", "part", "quantity", "unit")
+    list_filter = ("bom", "part")
+    search_fields = ("item_no", "part__part_number")
+
+
+@admin.register(InventoryLot)
+class InventoryLotAdmin(admin.ModelAdmin):
+    list_display = (
+        "serial_number",
+        "part",
+        "quantity",
+        "status",
+        "location",
+        "received_at",
+        "sourced_po",
+    )
+    list_filter = ("status",)
+    search_fields = ("serial_number", "part__part_number")
+
+    @admin.display(description="来源采购单")
+    def sourced_po(self, obj):
+        from traceability.models import TraceLink
+
+        targets = TraceLink.objects.filter(
+            project=obj.project,
+            from_type="inventory_lot",
+            from_id=obj.serial_number,
+            relation_type="sourced_from",
+        ).values_list("to_id", flat=True)
+        return ", ".join(targets) or "-"

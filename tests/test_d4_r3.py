@@ -140,6 +140,37 @@ def test_json_is_deterministic(seeded, client):
     assert first == second
 
 
+# --- 5b) 多项目守卫 409 ----------------------------------------------------
+def test_multi_project_serial_conflict_409(seeded, client, project):
+    other_project = Project.objects.create(
+        code="P2-409", name="第二项目", created_by=seeded
+    )
+    part = Part.objects.get(part_number="PART-001")
+    local = InventoryLot.objects.create(
+        project=project,
+        part=part,
+        serial_type="serial",
+        serial_number="LOT-XYZ",
+        quantity=1,
+        qty_available=1,
+    )
+    foreign = InventoryLot.objects.create(
+        project=other_project,
+        part=part,
+        serial_type="serial",
+        serial_number="LOT-XYZ",
+        quantity=1,
+        qty_available=1,
+    )
+    client.force_login(seeded)
+    try:
+        assert client.get("/trace/serial/LOT-XYZ/").status_code == 409
+    finally:
+        foreign.delete()
+        local.delete()
+        other_project.delete()
+
+
 # --- 6) 计数回归 -----------------------------------------------------------
 def test_counts_regression(seeded):
     assert TraceLink.objects.count() == 39

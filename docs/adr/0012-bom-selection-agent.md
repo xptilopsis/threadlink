@@ -84,3 +84,16 @@
 **字段形态**：`CharField(max_length=64, blank=True, default="")`（对齐同域 `position` 风格，**非 null**、无唯一约束、无索引）。
 
 **标签 / 版本定稿**：`substitute_group = "SG-SEL-<agent_run_id>"`；`Bom.version = "v0.1-sel-<agent_run_id>"`（避开 `(project, version)` 唯一约束）。
+## v1 冻结（`prompts/bom_selection_agent/v1`，2026-10-05）
+
+三正文文件**冻结**（本次仅记录 checksum，**未改内容**）：
+
+| 文件 | sha256（**仓库 blob 口径**，`git cat-file blob HEAD:<path>`） |
+| --- | --- |
+| `system.md` | `76ec84896083fbf9045e2669cbbf1f1c75ec3d48dc27c9578f333a9b6a329df0` |
+| `user_template.md` | `0cf32823fbfc2f84a2bdb7e36117523688f5e888ebebc52b954093aa6878ee97` |
+| `schema.json` | `bbcaf3ef98a98b40a58f74ce23d18869057d2a9a4f09dd23b97d2805e735985d` |
+
+- **策略**：v1 **不可改**；任何调优走 `v2/` 新目录 + `prompt_version` 升级（`PROMPT_VERSION="v2"`）。
+- **非确定性声明**：LLM 跨次输出的措辞差异为**接受的模型非确定性**，v1 内**不追、不改**；live 断言只锁**值域 / 字段完整性 / 计数下限**，不锁文本。
+- **口径**：冻结基准统一用 **blob**（`git cat-file`）——`core.autocrlf` 使工作树呈 CRLF，工作树字节不作为基准（同 ADR-0010 / D6 步骤 0 `.gitattributes`）。

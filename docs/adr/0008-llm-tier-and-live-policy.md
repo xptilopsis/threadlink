@@ -76,9 +76,19 @@ python scripts\llm_preflight.py --probe-reasoning
 
 三组：基线 / `thinking={"type":"enabled"}` + `reasoning_effort="low"` / `thinking={"type":"disabled"}`；成功标准 = **reasoning_tokens 趋零且 content 非空**。
 
-### 生产推荐配置
+### 生产推荐配置（2026-10-05 本机探测定稿）
 
-> **待本机探测结果回填**：定稿的 `thinking` / `reasoning_effort` 合法值（以官方文档为准）写入 `.env` 的 `LLM_EXTRA_BODY`，并同步 `.env.example` 推荐值与 README。探测前 `.env.example` 示例为 `LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`（占位，待确认）。
+本机对 DeepSeek 端点实测三组（`max_tokens=512`）：
+
+| 组 | `thinking` / `reasoning_effort` | `reasoning_tokens` | `content` |
+| --- | --- | --- | --- |
+| baseline | （不传） | 41 | `{"ok": true}` |
+| enabled+low | `thinking.type=enabled` + `reasoning_effort=low` | 14 | `{"ok": true}` |
+| **disabled（定稿）** | `thinking.type=disabled` | **None** | `{"ok": true}` |
+
+**定稿推荐**：`LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`（等价 `{"reasoning_effort": "none"}`）；已写入 `.env.example` 与 README。
+**官方文档合法值**：`thinking.type ∈ {enabled, disabled}`（默认 `enabled`）；`reasoning_effort ∈ {none, low, high, max}`（`none` 禁用思考、`low/high/max` 启用，默认 `high`；兼容映射 `minimal→low`、`medium/xhigh→high`）。
+**另据文档**：`response_format.type` 仅 `{text, json_object}`（**不支持 `json_schema`**），实证本 ADR 的 `json_schema→json_object` 自动降级为必需能力；`max_tokens` 未设时默认非思考 8K / 思考 64K。
 
 ### preflight 与测试口径
 

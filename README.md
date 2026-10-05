@@ -168,7 +168,7 @@ LLM_BACKEND=openai          # 断网开发可设 fake（从 tests/fixtures/llm_f
 LLM_TIMEOUT=30
 LLM_MAX_RETRIES=2
 LLM_STRUCTURED_MODE=auto    # auto 时 json_schema → json_object 自动降级
-LLM_EXTRA_BODY=             # 通用 provider 参数（JSON，经 extra_body 透传）；留空即 OpenAI 原生
+LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}   # DeepSeek 推荐：禁用思考档位；OpenAI 原生置空
 ```
 
 运行：
@@ -185,4 +185,5 @@ python -m pytest -q -m "not live"                  :: 断网/无 key 逃生（�
 - live 用例会**真实调用模型**并落 `AgentRun`；注意用量与成本（默认 `temperature=0`、`max_tokens` 保守）。
 - Pydantic 校验为唯一成功判据；provider 不支持 `json_schema` 时自动降级 `json_object`（记录实际模式）。
 - **推理档位**：若 provider 为思考模型（如 DeepSeek `deepseek-flash`），reasoning tokens 计入 `max_tokens`，小配额会耗尽预算致 `content` 为空；用 `--probe-reasoning` 找到「reasoning_tokens 趋零 + content 非空」的配置，写入 `LLM_EXTRA_BODY`（通用注入，无代码特判）。
+- **探测结论（2026-10-05，DeepSeek）**：三组 `baseline` / `thinking=enabled+low` / `thinking=disabled` 的 `reasoning_tokens` = 41 / 14 / None，`content` 均非空（`max_tokens=512`）；**定稿推荐 `LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`**（等价 `{"reasoning_effort": "none"}`）。合法值：`thinking.type ∈ {enabled, disabled}`、`reasoning_effort ∈ {none, low, high, max}`。
 - 配置缺失 fail-loud（报错含变量名），不静默跳过、不产生 `AgentRun`。

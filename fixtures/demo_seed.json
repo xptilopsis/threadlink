@@ -1,11 +1,11 @@
 {
   "project": {"id": "PROJ-001", "code": "DEMO-GW", "name": "便携式工业网关样机研发", "description": "演示项目：9-36V DC 宽压供电工业网关，额定电流 >=5A，工作温度 -40~85°C，防护等级 IP65，BOM 成本 <= 800 元。", "status": "active", "created_by_id": "USER-001", "created_at": "2026-01-05T09:00:00+08:00", "updated_at": "2026-03-10T18:00:00+08:00"},
   "users": [
-    {"id": "USER-001", "username": "admin", "email": "admin@threadlink.example.com", "first_name": "系统", "last_name": "管理员", "role": "admin", "is_active": true, "is_staff": true, "date_joined": "2026-01-05T09:00:00+08:00"},
-    {"id": "USER-002", "username": "rd_engineer", "email": "rd@threadlink.example.com", "first_name": "研发", "last_name": "工程师", "role": "engineer", "is_active": true, "is_staff": true, "date_joined": "2026-01-05T09:05:00+08:00"},
-    {"id": "USER-003", "username": "buyer", "email": "buyer@threadlink.example.com", "first_name": "采购", "last_name": "专员", "role": "procurement", "is_active": true, "is_staff": false, "date_joined": "2026-01-05T09:06:00+08:00"},
-    {"id": "USER-004", "username": "tester", "email": "tester@threadlink.example.com", "first_name": "测试", "last_name": "工程师", "role": "test", "is_active": true, "is_staff": false, "date_joined": "2026-01-05T09:07:00+08:00"},
-    {"id": "USER-005", "username": "pm", "email": "pm@threadlink.example.com", "first_name": "项目", "last_name": "经理", "role": "quality", "is_active": true, "is_staff": false, "date_joined": "2026-01-05T09:08:00+08:00"}
+    {"id": "USER-001", "username": "admin", "email": "admin@threadlink.example.com", "first_name": "系统", "last_name": "管理员", "role": "admin", "is_active": true, "date_joined": "2026-01-05T09:00:00+08:00"},
+    {"id": "USER-002", "username": "rd_engineer", "email": "rd@threadlink.example.com", "first_name": "研发", "last_name": "工程师", "role": "engineer", "is_active": true, "date_joined": "2026-01-05T09:05:00+08:00"},
+    {"id": "USER-003", "username": "buyer", "email": "buyer@threadlink.example.com", "first_name": "采购", "last_name": "专员", "role": "procurement", "is_active": true, "date_joined": "2026-01-05T09:06:00+08:00"},
+    {"id": "USER-004", "username": "tester", "email": "tester@threadlink.example.com", "first_name": "测试", "last_name": "工程师", "role": "test", "is_active": true, "date_joined": "2026-01-05T09:07:00+08:00"},
+    {"id": "USER-005", "username": "pm", "email": "pm@threadlink.example.com", "first_name": "项目", "last_name": "经理", "role": "quality", "is_active": true, "date_joined": "2026-01-05T09:08:00+08:00"}
   ],  "parts": [
     {"id": "PART-001", "project_id": "PROJ-001", "part_number": "PART-001", "name": "DC-DC 电源模块 9-36V/5A", "description": "宽压输入 DC-DC 电源模块，输出 12V/5A。", "category": "电源模块", "manufacturer": "厂商A", "mpn": "MPN-DCDC-5A", "lifecycle_status": "active", "unit": "个", "is_critical": true, "created_at": "2026-01-10T10:00:00+08:00", "updated_at": "2026-02-20T10:00:00+08:00"},
     {"id": "PART-002", "project_id": "PROJ-001", "part_number": "PART-002", "name": "DC-DC 电源模块 9-36V/6A", "description": "ECN-001 替代料，输出 12V/6A，引脚兼容。", "category": "电源模块", "manufacturer": "厂商A", "mpn": "MPN-DCDC-6A", "lifecycle_status": "active", "unit": "个", "is_critical": true, "created_at": "2026-02-15T10:00:00+08:00", "updated_at": "2026-03-01T10:00:00+08:00"},

@@ -234,13 +234,19 @@ class Validator:
                     )
 
     def check_user_roles(self) -> None:
-        """T2.4：每个 ``user.role`` 必须落在冻结职能枚举内。"""
+        """T2.4：每个 ``user.role`` 必须落在冻结职能枚举内；users 不得含冗余 flags 键。"""
         for row in self.rows("users"):
             role = row.get("role")
             if role not in ROLE_ENUM:
                 self.fail(
                     f"users {row.get('id')}: role 非法 {role!r}（须为 {sorted(ROLE_ENUM)} 之一）"
                 )
+            for redundant in ("is_staff", "is_superuser"):
+                if redundant in row:
+                    self.fail(
+                        f"users {row.get('id')}: 冗余键 {redundant!r} 不应出现在 fixture"
+                        f"（flags 按 role 派生，见 ADR-0003 / 字典 §1）"
+                    )
 
     def check_ref(self, coll: str, field: str, target: str, value: str) -> None:
         # 注：此处仅按业务编号解析存在性；project 归属一致性（R9）在单项目 fixture 下延后至 D2。

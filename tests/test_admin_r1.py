@@ -1,8 +1,8 @@
 """D3-R1：Requirement / TestCase / TestRun 的 Admin CRUD 验收测试。
 
 前置数据由 ``load_demo_seed --flush`` 提供（每个测试在事务内独立导入）。
-seed 的 ``admin``（fixture USER-001）默认非 superuser；按字典 §1「role=admin
-⟺ is_superuser/is_staff=True」在测试内提升为超管，以走 Django Admin 全权限。
+seed 的 ``admin``（fixture USER-001）由 loader 按字典 §1 / ADR-0003 的
+``role=admin ⟺ is_superuser/is_staff=True`` 映射直接建成超管，测试不再提升。
 
 预置常数（先数后写，来自 fixtures/demo_seed.json）：
 - requirements.priority：high=3，medium=2
@@ -26,11 +26,7 @@ from core.models import TestRun as RunModel
 @pytest.fixture
 def seeded(db):
     call_command("load_demo_seed", flush=True, verbosity=0)
-    admin = User.objects.get(username="admin")
-    admin.is_superuser = True
-    admin.is_staff = True
-    admin.save(update_fields=["is_superuser", "is_staff"])
-    return admin
+    return User.objects.get(username="admin")
 
 
 def _result_count(response):

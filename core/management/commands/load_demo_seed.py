@@ -143,6 +143,7 @@ class Command(BaseCommand):
     # -- collections -------------------------------------------------------
     def _load_users(self, rows):
         for row in rows:
+            is_admin = row["role"] == "admin"
             user = User.objects.filter(username=row["username"]).first()
             if user is None:
                 user = User(
@@ -152,12 +153,30 @@ class Command(BaseCommand):
                     last_name=row.get("last_name") or "",
                     role=row["role"],
                     is_active=row.get("is_active", True),
-                    is_staff=row.get("is_staff", False),
+                    is_staff=is_admin,
+                    is_superuser=is_admin,
                     date_joined=_dt(row.get("date_joined")),
                 )
                 user.set_unusable_password()
                 user.save()
+            else:
+                user.role = row["role"]
+                user.is_staff = is_admin
+                user.is_superuser = is_admin
+                user.save(update_fields=["role", "is_staff", "is_superuser"])
             self._remember("users", row["id"], user)
+
+        for row in rows:
+            user = self._get("users", row["id"])
+            expected = row["role"] == "admin"
+            assert user.is_superuser is expected, (
+                f"role↔is_superuser 映射错误：{user.username} role={row['role']} "
+                f"is_superuser={user.is_superuser}"
+            )
+            assert user.is_staff is expected, (
+                f"role↔is_staff 映射错误：{user.username} role={row['role']} "
+                f"is_staff={user.is_staff}"
+            )
         return len(rows)
 
     def _load_project(self, row):

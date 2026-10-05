@@ -133,3 +133,24 @@ python scripts\validate_seed.py fixtures\demo_seed.json
 [OK] 种子校验通过：...\fixtures\demo_seed.json
      顶层键 22 个；TraceLink 39 条；引用闭包完整。
 ```
+## 演示仓库准备流程（D4 只读 Git 关联）
+
+GitCommit 使用**本地确定性生成**的演示仓库：SHA 由固定文件内容（LF）/ 作者 / 时间戳复现，并回填 `fixtures/demo_seed.json`；同步命令以仓库为准 upsert、fail-loud、不静默删。
+
+三条命令序列（Windows cmd，项目根目录）：
+
+```cmd
+python scripts\make_demo_repo.py            :: 生成 .data/demo-repo（确定性 3 commit，存在则拒绝）
+python manage.py load_demo_seed --flush     :: 导入种子（业务编号直写、不触发编号器）
+set GIT_READONLY_ROOTS=.data                :: 只读白名单（Windows 分号 ";" 分隔多个，相对 BASE_DIR）
+python manage.py sync_git_repo              :: 从仓库 upsert GitCommit（added/updated/missing）
+```
+
+自检（确定性）：`python scripts\make_demo_repo.py --check` 须与 fixture 的 3 个 SHA 零差异。
+
+说明：
+
+- `GIT_READONLY_ROOTS` 未配置时 `sync_git_repo` **拒绝执行**（fail-closed）；仓库路径经 `realpath` 前缀校验，防 `../` 逃逸。
+- 同步仅使用 `git log` 类**只读**操作，不改动仓库状态。
+- `python scripts\make_demo_repo.py --force` 可重建仓库（覆盖 `.data/demo-repo`；Windows 下自动清除只读 `.git` 文件）。
+- `sync_git_repo` 遇「DB 有、仓库无」的 GitCommit 会列出明细并以退出码 1 结束（这些行可能被 TraceLink 引用，禁止自动清理）。

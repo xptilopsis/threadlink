@@ -5,8 +5,11 @@ from django.utils.html import format_html
 from core.models import (
     Bom,
     BomItem,
+    Document,
     ECN,
     ECNImpact,
+    GitCommit,
+    GitRepo,
     InventoryLot,
     Part,
     PartParam,
@@ -315,3 +318,46 @@ class ECNImpactAdmin(admin.ModelAdmin):
     list_display = ("ecn", "affected_type", "affected_id", "impact_type")
     list_filter = ("affected_type", "impact_type")
     search_fields = ("ecn__ecn_number", "affected_id")
+
+# ---------------------------------------------------------------------------
+# D4-R2：Document / GitRepo / GitCommit 只读 Admin
+# ---------------------------------------------------------------------------
+
+
+class ReadOnlyModelAdmin(admin.ModelAdmin):
+    """列表 / 详情可见，写入路径全关（add/change/delete → False）。"""
+
+    def get_readonly_fields(self, request, obj=None):
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return True
+
+
+@admin.register(Document)
+class DocumentAdmin(ReadOnlyModelAdmin):
+    list_display = ("doc_no", "title", "doc_type", "is_readonly", "created_at")
+    list_filter = ("doc_type", "is_readonly")
+    search_fields = ("doc_no", "title")
+
+
+@admin.register(GitRepo)
+class GitRepoAdmin(ReadOnlyModelAdmin):
+    list_display = ("name", "local_path", "default_branch", "is_readonly")
+    search_fields = ("name", "local_path")
+
+
+@admin.register(GitCommit)
+class GitCommitAdmin(ReadOnlyModelAdmin):
+    list_display = ("sha", "repo", "author_name", "committed_at", "message")
+    list_filter = ("repo",)
+    search_fields = ("sha", "author_name", "message")

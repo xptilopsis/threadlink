@@ -4,7 +4,7 @@ from pathlib import Path
 
 from django import forms
 from django.conf import settings
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.utils.text import get_valid_filename
@@ -425,6 +425,31 @@ class DocumentAdmin(admin.ModelAdmin):
             if not obj.mime_type:
                 obj.mime_type = getattr(upload, "content_type", "") or ""
         super().save_model(request, obj, form, change)
+
+    actions = ("run_requirement_agent_action",)
+
+    @admin.action(description="运行 Requirement Agent（生成需求卡）")
+    def run_requirement_agent_action(self, request, queryset):
+        from agents.requirement import run_requirement_agent
+
+        for document in queryset:
+            try:
+                summary = run_requirement_agent(document.project, document, request.user)
+            except Exception as exc:  # noqa: BLE001
+                self.message_user(
+                    request, f"{document.doc_no}：运行失败——{exc}", level=messages.ERROR
+                )
+                continue
+            if summary.get("ok"):
+                self.message_user(
+                    request, f"{document.doc_no}：{summary['cards']} 张卡片进入待确认"
+                )
+            else:
+                self.message_user(
+                    request,
+                    f"{document.doc_no}：引用核验失败（{len(summary.get('invalid_references', []))} 条）",
+                    level=messages.WARNING,
+                )
 
 
 @admin.register(GitRepo)

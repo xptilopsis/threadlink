@@ -73,3 +73,16 @@ failed / rejected / success  → 不可再处置（fail-loud）
 - 四值走全：approve→`success`、reject→`rejected`，与 `failed`/`needs_review` 共同覆盖 `AgentRunStatus`。
 - 演示端到端闭环：邮件 → 卡片（`needs_review`）→ approve → `Requirement` 列表可见 + `TraceLink` 可回查。
 - 留痕：状态迁移、绑定、幂等、回滚、字段映射、code 处置、TraceLink 口径与延后项均固化于本 ADR。
+## v1 冻结（2026-10-05）
+
+`prompts/requirement_agent/v1/` 三正文文件**冻结**（本次仅记录 checksum，**未改内容**）：
+
+| 文件 | sha256（当前检出字节） |
+| --- | --- |
+| `system.md` | `95ce9f33e1e22bf7977e39bdfa8cd9c0b659797d7b3b108967ba91820e9a2300` |
+| `user_template.md` | `82a834deb90e7ecf68df0b0dea7c528407463221191cab817d77349027654ca7` |
+| `schema.json` | `f7be7ed4ff7b5b5610c355da3f77ac817badac15b8a65e3dfb9450de9e005fec` |
+
+- **策略**：v1 **不可改**；任何调优走 `v2/` 新目录 + `prompt_version` 升级（`PROMPT_VERSION="v2"`）。
+- **非确定性声明**：LLM 跨次输出的措辞 / `priority` 差异（如 IP65 一次 `medium`、一次 `high`）为**接受的模型非确定性**，v1 内**不追、不改**；live 断言只锁**值域与计数下限**，不锁文本。
+- **换行口径注记**：三文件当前检出为 **CRLF**（Windows 写入副产物）；上表 checksum 对应 CRLF 字节。若日后统一为 LF，须**重算并更新**本表（登记 D13 nit）。

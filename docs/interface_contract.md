@@ -94,6 +94,7 @@
 
 - **路径参数**：`sn` — 序列号，如 `SN-DEMO-001`。
 - **查询参数**（可选）：`depth`（默认 0 = 全链路）、`direction`（`forward` / `backward`，默认 `backward`）。
+- **v1（DB 版）现状**：`depth` / `direction` 暂未实现——服务端忽略这两个参数、始终返回全链；截断语义与 `complete` / `missing` 的关系留 D7 定义。（仅标注现状，不改上方声明本身。）
 - **响应**：`TraceabilityAgentOutput`（`schemas/agent_outputs.py`），语义见 §3.1。
 - **执行顺序**：先查库判定 `found`；`found=false` 时直接短路返回、不调用 LLM；仅 `found=true` 时可由 LLM 生成自然语言说明。
 - **要点**：每个 `TraceNode` 必须带 `source_refs`（引用来源，用于防幻觉）；链路缺失环节写入 `missing` 并置 `complete=false`。

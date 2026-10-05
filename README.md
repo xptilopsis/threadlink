@@ -154,3 +154,32 @@ python manage.py sync_git_repo              :: 从仓库 upsert GitCommit（adde
 - 同步仅使用 `git log` 类**只读**操作，不改动仓库状态。
 - `python scripts\make_demo_repo.py --force` 可重建仓库（覆盖 `.data/demo-repo`；Windows 下自动清除只读 `.git` 文件）。
 - `sync_git_repo` 遇「DB 有、仓库无」的 GitCommit 会列出明细并以退出码 1 结束（这些行可能被 TraceLink 引用，禁止自动清理）。
+## LLM live 测试（D5）
+
+`agents/llm.py` 为 LLM 客户端层；`pytest -q` 默认包含 `live`（真实调用）等分层测试。
+
+配置（`.env`，密钥不入库）：
+
+```dotenv
+OPENAI_API_KEY=<本地填写>
+OPENAI_MODEL=<带日期快照 id（OpenAI）或 provider 模型名（如 deepseek-chat）>
+OPENAI_BASE_URL=<可选，自定义兼容端点，如 https://api.deepseek.com>
+LLM_BACKEND=openai          # 断网开发可设 fake（从 tests/fixtures/llm_fake 回放）
+LLM_TIMEOUT=30
+LLM_MAX_RETRIES=2
+LLM_STRUCTURED_MODE=auto    # auto 时 json_schema → json_object 自动降级
+```
+
+运行：
+
+```cmd
+python scripts\llm_preflight.py     :: 连通预检：打印 model / 延迟 / 用量
+python -m pytest -q                 :: 全套（含 live）
+python -m pytest -q -m "not live"   :: 断网/无 key 逃生（跳过真实调用）
+```
+
+要点：
+
+- live 用例会**真实调用模型**并落 `AgentRun`；注意用量与成本（默认 `temperature=0`、`max_tokens` 保守）。
+- Pydantic 校验为唯一成功判据；provider 不支持 `json_schema` 时自动降级 `json_object`（记录实际模式）。
+- 配置缺失 fail-loud（报错含变量名），不静默跳过、不产生 `AgentRun`。

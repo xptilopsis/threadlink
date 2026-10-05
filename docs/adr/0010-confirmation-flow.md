@@ -77,12 +77,12 @@ failed / rejected / success  → 不可再处置（fail-loud）
 
 `prompts/requirement_agent/v1/` 三正文文件**冻结**（本次仅记录 checksum，**未改内容**）：
 
-| 文件 | sha256（当前检出字节） |
+| 文件 | sha256（**仓库 blob 口径**，`git cat-file blob HEAD:<path>`） |
 | --- | --- |
-| `system.md` | `95ce9f33e1e22bf7977e39bdfa8cd9c0b659797d7b3b108967ba91820e9a2300` |
-| `user_template.md` | `82a834deb90e7ecf68df0b0dea7c528407463221191cab817d77349027654ca7` |
-| `schema.json` | `f7be7ed4ff7b5b5610c355da3f77ac817badac15b8a65e3dfb9450de9e005fec` |
+| `system.md` | `578f6028c5fc51e20d608543fe08364eafeba91229e13dff22c960246bd92e91` |
+| `user_template.md` | `9ad5cf8beb3a5ad64d7daa9b28652750ba56689f2d6f493af74c7e9db03ce8e0` |
+| `schema.json` | `25c6aeeb7cbc8346d858df2f18b86c6af3d228a40523f765e1335ed67f44cbe4` |
 
+- **冻结基准口径（2026-10-05 修正）**：以**仓库 blob**（git 规范化内容，LF）为准——本项目 `core.autocrlf` 使**工作树**呈 CRLF，工作树字节哈希（`95ce9f33…`/`82a834de…`/`f7be7ed4…`）**不作为冻结基准**。核验/复核统一用 `git cat-file blob HEAD:<path>` 口径。blob vs 工作树对照表见 `docs/qa/2026-10-05-d5-closeout.md` 附录。
 - **策略**：v1 **不可改**；任何调优走 `v2/` 新目录 + `prompt_version` 升级（`PROMPT_VERSION="v2"`）。
 - **非确定性声明**：LLM 跨次输出的措辞 / `priority` 差异（如 IP65 一次 `medium`、一次 `high`）为**接受的模型非确定性**，v1 内**不追、不改**；live 断言只锁**值域与计数下限**，不锁文本。
-- **换行口径注记**：三文件当前检出为 **CRLF**（Windows 写入副产物）；上表 checksum 对应 CRLF 字节。若日后统一为 LF，须**重算并更新**本表（登记 D13 nit）。

@@ -1,0 +1,57 @@
+{
+  "agent_name": "requirement",
+  "summary": "从客户邮件抽取 5 条需求卡（fake 回放）",
+  "cards": [
+    {
+      "title": "输入电压与额定电流",
+      "content": "电源需支持 9-36V DC 宽压输入，额定电流不低于 5A。",
+      "source_type": "email",
+      "priority": "high",
+      "params": [
+        {"name": "input_voltage", "operator": "range", "value_min": 9, "value_max": 36, "unit": "V", "is_mandatory": true},
+        {"name": "rated_current", "operator": "gte", "value_num": 5, "unit": "A", "is_mandatory": true}
+      ],
+      "source_refs": [{"type": "document", "id": "DOC-001"}],
+      "confidence": 0.9
+    },
+    {
+      "title": "工作温度范围",
+      "content": "工作温度范围 -40 ~ 85 °C。",
+      "source_type": "email",
+      "priority": "high",
+      "params": [{"name": "operating_temp", "operator": "range", "value_min": -40, "value_max": 85, "unit": "C", "is_mandatory": true}],
+      "source_refs": [{"type": "document", "id": "DOC-001"}],
+      "confidence": 0.9
+    },
+    {
+      "title": "防护等级 IP65",
+      "content": "整机防护等级需达到 IP65。",
+      "source_type": "email",
+      "priority": "high",
+      "params": [{"name": "ip_rating", "operator": "eq", "value_text": "IP65", "is_mandatory": true}],
+      "source_refs": [{"type": "document", "id": "DOC-001"}],
+      "confidence": 0.85
+    },
+    {
+      "title": "BOM 成本约束",
+      "content": "BOM 成本控制在 800 元人民币以内。",
+      "source_type": "email",
+      "priority": "medium",
+      "params": [{"name": "bom_cost", "operator": "lte", "value_num": 800, "unit": "CNY", "is_mandatory": true}],
+      "source_refs": [{"type": "document", "id": "DOC-001"}],
+      "confidence": 0.8
+    },
+    {
+      "title": "工业以太网通信接口",
+      "content": "需具备工业以太网接口。",
+      "source_type": "email",
+      "priority": "medium",
+      "params": [],
+      "source_refs": [{"type": "document", "id": "DOC-001"}],
+      "confidence": 0.7
+    }
+  ],
+  "source_refs": [{"type": "document", "id": "DOC-001"}],
+  "trace_refs": [],
+  "warnings": []
+}

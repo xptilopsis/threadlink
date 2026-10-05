@@ -85,6 +85,7 @@ class CallResult:
     usage: Any
     latency: float
     structured_mode: str
+    agent_run: Any = None  # D5-R2：真实调用落库的 AgentRun 行（供核验后同一行更新）
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ def _record_agent_run(
     output_schema_valid,
     error="",
 ):
-    AgentRun.objects.create(
+    return AgentRun.objects.create(
         project=project,
         agent_name=agent_name,
         status=status,
@@ -390,7 +391,7 @@ def call_json(
         raise
 
     latency = time.time() - started
-    _record_agent_run(
+    run = _record_agent_run(
         project=project,
         agent_name=agent_name,
         prompt_id=prompt_id,
@@ -402,4 +403,4 @@ def call_json(
         output_json=parsed.model_dump(mode="json"),
         output_schema_valid=True,
     )
-    return CallResult(parsed, raw, usage, latency, used_mode)
+    return CallResult(parsed, raw, usage, latency, used_mode, agent_run=run)

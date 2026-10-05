@@ -1,0 +1,62 @@
+{
+  "_comment": "参考件（reference only）。权威 schema = schemas/agent_outputs.py 的 RequirementAgentOutput / RequirementCard；call_json 从 Pydantic 模型派生，本文件仅供人工阅读与 prompt 约束对照。",
+  "type": "object",
+  "required": ["agent_name", "cards"],
+  "properties": {
+    "agent_name": {"const": "requirement"},
+    "summary": {"type": ["string", "null"]},
+    "cards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["title", "content", "source_type", "confidence"],
+        "properties": {
+          "id": {"type": ["string", "null"]},
+          "code": {"type": ["string", "null"]},
+          "title": {"type": "string", "minLength": 1},
+          "content": {"type": "string", "minLength": 1},
+          "source_type": {"enum": ["prd", "sor", "email", "manual"]},
+          "priority": {"enum": ["low", "medium", "high", null]},
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": {"type": "string"},
+                "operator": {"enum": ["eq", "gte", "lte", "range"]},
+                "value_text": {"type": ["string", "null"]},
+                "value_num": {"type": ["number", "null"]},
+                "value_min": {"type": ["number", "null"]},
+                "value_max": {"type": ["number", "null"]},
+                "unit": {"type": ["string", "null"]},
+                "is_mandatory": {"type": "boolean"}
+              }
+            }
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "id"],
+              "properties": {
+                "type": {"type": "string"},
+                "id": {"type": "string"},
+                "locator": {"type": ["string", "null"]},
+                "snippet": {"type": ["string", "null"]}
+              }
+            }
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "confirmed": {"type": "boolean"},
+          "confirmed_by": {"type": ["string", "null"]},
+          "confirmed_at": {"type": ["string", "null"], "format": "date-time"}
+        }
+      }
+    },
+    "source_refs": {"type": "array"},
+    "trace_refs": {"type": "array"},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

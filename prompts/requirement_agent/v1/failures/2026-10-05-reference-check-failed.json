@@ -1,0 +1,36 @@
+{
+  "_note": "D5-R2 失败样例——沙箱 craft 复现的『引用核验失败』AgentRun 负载（非 live；live 真实失败样例待本机取证后补充/替换）。",
+  "context": {
+    "prompt_id": "prompt.requirement.extract",
+    "prompt_version": "v1",
+    "document": "DOC-001",
+    "scenario": "LLM 为需求卡输出了不存在的实体引用 part PART-999 → 引用核验层判 not_found"
+  },
+  "agent_run": {
+    "agent_name": "requirement",
+    "status": "failed",
+    "reference_check_passed": false,
+    "output_schema_valid": true,
+    "invalid_references": [
+      {"entity_type": "part", "entity_id": "PART-999", "reason": "not_found"}
+    ],
+    "error": "",
+    "output_json": {
+      "agent_name": "requirement",
+      "cards": [
+        {
+          "title": "幻觉卡",
+          "content": "引用不存在的物料 PART-999",
+          "source_type": "email",
+          "priority": "medium",
+          "params": [],
+          "source_refs": [{"type": "part", "id": "PART-999"}],
+          "confidence": 0.5
+        }
+      ],
+      "source_refs": [],
+      "trace_refs": [],
+      "warnings": []
+    }
+  }
+}

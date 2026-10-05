@@ -187,3 +187,32 @@ python -m pytest -q -m "not live"                  :: 断网/无 key 逃生（�
 - **推理档位**：若 provider 为思考模型（如 DeepSeek `deepseek-flash`），reasoning tokens 计入 `max_tokens`，小配额会耗尽预算致 `content` 为空；用 `--probe-reasoning` 找到「reasoning_tokens 趋零 + content 非空」的配置，写入 `LLM_EXTRA_BODY`（通用注入，无代码特判）。
 - **探测结论（2026-10-05，DeepSeek）**：三组 `baseline` / `thinking=enabled+low` / `thinking=disabled` 的 `reasoning_tokens` = 41 / 14 / None，`content` 均非空（`max_tokens=512`）；**定稿推荐 `LLM_EXTRA_BODY={"thinking": {"type": "disabled"}}`**（等价 `{"reasoning_effort": "none"}`）。合法值：`thinking.type ∈ {enabled, disabled}`、`reasoning_effort ∈ {none, low, high, max}`。
 - 配置缺失 fail-loud（报错含变量名），不静默跳过、不产生 `AgentRun`。
+## 演示流程：邮件 → 需求卡（D5-R2）
+
+Requirement Agent 从来源文档抽取需求卡，经引用核验后进入 `needs_review` 待确认队列（**不写 Requirement、不建 TraceLink**——确认动作留 D5-R3）。
+
+准备与运行（Windows cmd，项目根）：
+
+```cmd
+.venv\Scripts\python.exe scripts\make_demo_repo.py         :: 首次：生成确定性 demo 仓库
+.venv\Scripts\python.exe manage.py migrate
+.venv\Scripts\python.exe manage.py load_demo_seed --flush  :: 导入种子（含 DOC-001 客户邮件）
+.venv\Scripts\python.exe manage.py sync_git_repo           :: 需先 set GIT_READONLY_ROOTS=.data
+.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+```
+
+操作：
+
+1. 打开 `/admin/core/document/`，勾选 **DOC-001（客户需求邮件）** → 动作「运行 Requirement Agent（生成需求卡）」→ 消息「DOC-001：N 张卡片进入待确认」。
+2. 打开 `/admin/agents/agentrun/` 只读队列（过滤 `status=needs_review`），查看 `output_summary`（卡片标题）与详情 `output_json`。
+3. 引用核验失败时该 `AgentRun.status=failed`、`invalid_references` 落库，**不进队列**。
+
+契约端点（程序化触发；响应 `{agent_run, output}`）：
+
+```cmd
+curl -X POST http://127.0.0.1:8000/agents/requirement/run/ ^
+  -H "Content-Type: application/json" ^
+  -d "{\"project_id\": \"DEMO-GW\", \"document_id\": \"DOC-001\", \"prompt_id\": \"prompt.requirement.extract\", \"prompt_version\": \"v1\"}"
+```
+
+断网开发可设 `LLM_BACKEND=fake`，从 `tests/fixtures/llm_fake/` 回放、**不落 AgentRun**。

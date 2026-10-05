@@ -232,3 +232,24 @@ curl -X POST http://127.0.0.1:8000/agents/requirement/run/ ^
 - approve 全程事务：任一步失败整体回滚（保持 `needs_review`）；**不产生新 AgentRun 行**。
 - 幂等：对已处置行再次 approve/reject → 报错、不重复写实体。
 - 每卡对源 Document 写一条 `derived_from` TraceLink；卡片自带 `code` 不采用（编号器自动生成）。
+## 演示流程：选型解释（BOM Selection，D6-R2）
+
+引擎（`core/selection.py`，冻结）**权威**产出候选 / 分数 / 价格 / 交期 / 生命周期 / 排序；LLM 只写解释文案（`rationale` / `summary`）与 `replaces_part_id` 建议。
+
+**management command**：
+
+```cmd
+.venv\Scripts\python.exe manage.py run_bom_selection --project DEMO-GW
+```
+
+5 项 criteria 可覆盖（`--voltage-min/--voltage-max/--current-min/--temp-min/--temp-max/--ip-min`；`--cost-max` 默认不启用）。输出 run id + 候选摘要（`part_number / score / price / lead`）。
+
+**契约端点**（响应 `{agent_run, output}`）：
+
+```cmd
+curl -X POST http://127.0.0.1:8000/agents/bom-selection/run/ ^
+  -H "Content-Type: application/json" ^
+  -d "{\"project_id\": \"DEMO-GW\", \"prompt_id\": \"prompt.bom.selection\", \"prompt_version\": \"v1\"}"
+```
+
+**队列派发**（`/admin/agents/agentrun/`）：`requirement` 走确认流程（写 Requirement+TraceLink）；`bom_selection` **reject** 生效、**approve** 返回「未实现（D6-R3）」（不写实体）；未知 `agent_name` 跳过。断网开发可 `LLM_BACKEND=fake`（回放、**不落 AgentRun**）。

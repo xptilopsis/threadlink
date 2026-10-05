@@ -50,38 +50,45 @@ class AgentRunAdmin(admin.ModelAdmin):
         return f"{len(cards)} 张卡片：" + "；".join(titles[:5])
     actions = ("approve_selected", "reject_selected")
 
-    def _handle(self, request, queryset, handler, verb):
-        from agents.confirmation import ConfirmationError
+    def _handle(self, request, queryset, action, verb):
+        from agents.confirmation import ConfirmationError, approve, reject
 
         done = skipped = 0
         created = []
         for run in queryset:
+            # 按 agent_name 派发（D6-R2 §3.1）
+            if run.agent_name == "bom_selection" and action == "approve":
+                skipped += 1
+                self.message_user(
+                    request,
+                    f"#{run.pk} bom_selection 确认流程未实现（D6-R3）",
+                    level=messages.WARNING,
+                )
+                continue
+            if run.agent_name not in ("requirement", "bom_selection"):
+                skipped += 1  # 未知 agent_name → 跳过
+                continue
             try:
-                created.extend(handler(run, request.user))
+                if action == "approve":
+                    created.extend(approve(run, request.user))
+                else:
+                    reject(run, request.user)
                 done += 1
             except ConfirmationError:
                 skipped += 1
             except Exception as exc:  # noqa: BLE001
                 skipped += 1
-                self.message_user(
-                    request, f"#{run.pk} 处置异常：{exc}", level=messages.ERROR
-                )
+                self.message_user(request, f"#{run.pk} 处置异常：{exc}", level=messages.ERROR)
         if done:
             extra = f"，创建需求 {'、'.join(created)}" if created else ""
             self.message_user(request, f"已{verb} {done} 条{extra}")
         if skipped:
-            self.message_user(
-                request, f"{skipped} 条跳过：非待确认状态或前置校验失败", level=messages.WARNING
-            )
+            self.message_user(request, f"{skipped} 条跳过", level=messages.WARNING)
 
-    @admin.action(description="批准（写 Requirement + TraceLink）")
+    @admin.action(description="批准")
     def approve_selected(self, request, queryset):
-        from agents.confirmation import approve
+        self._handle(request, queryset, "approve", "批准")
 
-        self._handle(request, queryset, approve, "批准")
-
-    @admin.action(description="拒绝（不写实体）")
+    @admin.action(description="拒绝")
     def reject_selected(self, request, queryset):
-        from agents.confirmation import reject
-
-        self._handle(request, queryset, reject, "拒绝")
+        self._handle(request, queryset, "reject", "拒绝")

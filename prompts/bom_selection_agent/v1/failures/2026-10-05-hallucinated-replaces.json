@@ -1,0 +1,17 @@
+{
+  "_note": "D6-R2 失败样例——沙箱 craft 复现的『replaces_part_id 引用核验失败』BomSelectionAgentOutput 负载（非 live；live 真实样例待本机取证后按需补充/替换）。",
+  "context": {
+    "prompt_id": "prompt.bom.selection",
+    "prompt_version": "v1",
+    "scenario": "LLM 为候选建议 replaces_part_id=PART-999（不存在于 project）→ 核验层判 not_found → status=failed、invalid_references 落库、不进队列"
+  },
+  "agent_run": {
+    "agent_name": "bom_selection",
+    "status": "failed",
+    "reference_check_passed": false,
+    "output_schema_valid": true,
+    "invalid_references": [
+      {"entity_type": "part", "entity_id": "PART-999", "reason": "not_found"}
+    ]
+  }
+}

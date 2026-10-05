@@ -1,0 +1,8 @@
+{
+  "summary": "引擎候选解释（fake 回放）",
+  "candidates": [
+    {"part_number": "PART-002", "rationale": "最低交期 14 天、单价 45.00 CNY、生命周期 active，作为首选的综合性价比最优。", "replaces_part_id": null},
+    {"part_number": "PART-001", "rationale": "交期 21 天、单价 40.00 CNY、生命周期 active，成本最低，适合作为备选。", "replaces_part_id": null},
+    {"part_number": "PART-018", "rationale": "交期 90 天、单价 88.00 CNY，交期与成本均不占优，仅作长周期兜底。", "replaces_part_id": null}
+  ]
+}

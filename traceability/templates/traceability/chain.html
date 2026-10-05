@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>追溯链 {{ payload.root }}</title>
+</head>
+<body>
+  <h1>追溯链：{{ payload.root }}</h1>
+  <p>found={{ payload.found|yesno:"true,false" }}　complete={{ payload.complete|yesno:"true,false" }}</p>
+  {% if payload.missing %}<p>missing: {{ payload.missing|join:", " }}</p>{% endif %}
+
+  <h2>节点（{{ payload.nodes|length }}）</h2>
+  <ul>
+    {% for node in payload.nodes %}
+    <li>depth={{ node.depth }} [{{ node.node_type }}] {{ node.node_id }} — {{ node.label }}{% if node.relation_type %}（rel={{ node.relation_type }}）{% endif %}</li>
+    {% endfor %}
+  </ul>
+
+  <h2>边（{{ payload.edges|length }}）</h2>
+  <ul>
+    {% for edge in payload.edges %}
+    <li>{{ edge.from_node_id }} →{{ edge.relation_type }}→ {{ edge.to_node_id }}</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

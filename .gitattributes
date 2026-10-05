@@ -1,0 +1,17 @@
+# D6 步骤 0：显式换行策略（git 规则：每行一个 pattern）
+# 冻结基准统一为仓库 blob/规范化口径；新克隆工作树对 text 文件稳定为 LF。
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.eml text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.sqlite3 binary
+*.db binary
+*.pdf binary
+*.png binary
+*.jpg binary

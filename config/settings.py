@@ -147,3 +147,20 @@ LLM_STRUCTURED_MODE = os.environ.get("LLM_STRUCTURED_MODE", "auto")
 # 通用 provider 参数注入（JSON 字符串，经 SDK extra_body 透传；如 DeepSeek
 # `{"thinking": {"type": "disabled"}}`）。切回 OpenAI 置空即可，零代码改动。
 LLM_EXTRA_BODY = os.environ.get("LLM_EXTRA_BODY", "")
+
+# ---------------------------------------------------------------------------
+# D5-R2：文档存储根（Document.file_path 为 BASE_DIR 相对路径，防目录穿越）
+# ---------------------------------------------------------------------------
+
+DOCUMENTS_ROOT = BASE_DIR / "documents"
+
+
+def resolve_doc_path(file_path: str) -> Path:
+    """把 ``Document.file_path``（BASE_DIR 相对）解析为绝对路径，并校验仍在 BASE_DIR 内。"""
+
+    candidate = (BASE_DIR / file_path).resolve()
+    try:
+        candidate.relative_to(BASE_DIR.resolve())
+    except ValueError as exc:
+        raise ValueError(f"file_path 越出 BASE_DIR：{file_path!r}") from exc
+    return candidate

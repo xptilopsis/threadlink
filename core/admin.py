@@ -1,7 +1,15 @@
+import hashlib
+import time
+from pathlib import Path
+
+from django import forms
+from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
+from django.utils.text import get_valid_filename
 
+from config.settings import resolve_doc_path
 from core.models import (
     Bom,
     BomItem,
@@ -343,11 +351,80 @@ class ReadOnlyModelAdmin(admin.ModelAdmin):
         return True
 
 
+class DocumentAdminForm(forms.ModelForm):
+    """Document 入库表单（D5-R2 §2）：文件为**表单级上传字段**，非模型字段。"""
+
+    upload = forms.FileField(required=True, label="文件")
+
+    class Meta:
+        model = Document
+        fields = ("project", "title", "doc_type", "source_path", "uploaded_by", "upload")
+
+    def clean_upload(self):
+        upload = self.cleaned_data["upload"]
+        if upload.size == 0:
+            raise forms.ValidationError("上传文件为空")
+        return upload
+
+
 @admin.register(Document)
-class DocumentAdmin(ReadOnlyModelAdmin):
+class DocumentAdmin(admin.ModelAdmin):
+    """D5-R2 §2：文档**入库**开放（add），**创建后不可改**（change/delete → False）。
+
+    - 上传文件写 ``documents/uploads/<timestamp>-<safe_name>``；
+    - ``file_path`` 为 BASE_DIR 相对路径、``checksum`` 为真实 SHA-256、``size_bytes`` 实际大小；
+    - ``is_readonly=True``（字典 §19「恒为 true」；语义=创建后内容不可变）；
+    - GitRepo / GitCommit 维持全只读（`ReadOnlyModelAdmin`）。
+    """
+
+    form = DocumentAdminForm
     list_display = ("doc_no", "title", "doc_type", "is_readonly", "created_at")
     list_filter = ("doc_type", "is_readonly")
     search_fields = ("doc_no", "title")
+
+    GENERATED_FIELDS = (
+        "doc_no",
+        "file_path",
+        "checksum",
+        "size_bytes",
+        "mime_type",
+        "is_readonly",
+        "created_at",
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj is not None:
+            return [field.name for field in self.model._meta.fields]
+        return list(self.GENERATED_FIELDS)
+
+    def has_add_permission(self, request):
+        return True
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return True
+
+    def save_model(self, request, obj, form, change):
+        upload = form.cleaned_data.get("upload")
+        if upload:
+            safe_name = get_valid_filename(Path(upload.name).name)
+            relative = f"documents/uploads/{int(time.time())}-{safe_name}"
+            destination = resolve_doc_path(relative)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            data = upload.read()
+            destination.write_bytes(data)
+            obj.file_path = relative
+            obj.checksum = hashlib.sha256(data).hexdigest()
+            obj.size_bytes = len(data)
+            obj.is_readonly = True
+            if not obj.mime_type:
+                obj.mime_type = getattr(upload, "content_type", "") or ""
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(GitRepo)

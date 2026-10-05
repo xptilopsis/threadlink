@@ -5,15 +5,18 @@
 其 GitCommit 的 SHA 与仓库一致（0/0/0 幂等）。
 """
 
+import hashlib
 import subprocess
 from pathlib import Path
 
 import pytest
 from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from core.models import Document, GitCommit, GitRepo, User
+from config.settings import resolve_doc_path
+from core.models import Document, GitCommit, GitRepo, Project, User
 
 BASE_DIR = Path(settings.BASE_DIR)
 DEMO_REPO = BASE_DIR / ".data" / "demo-repo"
@@ -28,6 +31,11 @@ pytestmark = pytest.mark.skipif(
 def seeded(db):
     call_command("load_demo_seed", flush=True, verbosity=0)
     return User.objects.get(username="admin")
+
+
+@pytest.fixture
+def project(seeded):
+    return Project.objects.get(code="DEMO-GW")
 
 
 # --- 1) roots 白名单 -------------------------------------------------------
@@ -119,22 +127,56 @@ def test_readonly_admin_pages(seeded, client):
         assert client.get(url).status_code == 200, url
 
 
-def test_readonly_admin_add_forbidden(seeded, client):
+def test_git_admin_add_forbidden(seeded, client):
+    # D5-R2 §2：Document 入库已开放；GitRepo / GitCommit 维持全只读。
     client.force_login(seeded)
     for url in (
-        "/admin/core/document/add/",
         "/admin/core/gitrepo/add/",
         "/admin/core/gitcommit/add/",
     ):
         assert client.get(url).status_code == 403, url
 
 
-def test_readonly_admin_detail_visible_post_forbidden(seeded, client):
+def test_document_add_form_visible(seeded, client):
     client.force_login(seeded)
-    document = Document.objects.order_by("id").first()
+    assert client.get("/admin/core/document/add/").status_code == 200
+
+
+def test_document_upload_creates_readonly(seeded, client, project):
+    client.force_login(seeded)
+    before = Document.objects.count()
+    payload = b"hello threadlink document\n"
+    upload = SimpleUploadedFile("demo-upload.txt", payload, content_type="text/plain")
+    response = client.post(
+        "/admin/core/document/add/",
+        {
+            "project": project.pk,
+            "title": "上传测试文档",
+            "doc_type": "other",
+            "source_path": "",
+            "uploaded_by": "",
+            "upload": upload,
+        },
+    )
+    assert response.status_code in (302, 200)
+    assert Document.objects.count() == before + 1
+    document = Document.objects.order_by("-id").first()
+    assert document.file_path.startswith("documents/uploads/")
+    assert document.is_readonly is True
+    destination = resolve_doc_path(document.file_path)
+    assert destination.exists()
+    assert document.checksum == hashlib.sha256(destination.read_bytes()).hexdigest()
+    assert document.size_bytes == len(payload)
+
+    # 创建后不可改：change/delete POST → 403，磁盘文件 mtime / 内容不变
+    mtime_before = destination.stat().st_mtime_ns
+    content_before = destination.read_bytes()
     change_url = f"/admin/core/document/{document.pk}/change/"
     assert client.get(change_url).status_code == 200
     assert client.post(change_url, {}).status_code == 403
+    assert client.post(f"/admin/core/document/{document.pk}/delete/", {}).status_code == 403
+    assert destination.stat().st_mtime_ns == mtime_before
+    assert destination.read_bytes() == content_before
 
 
 # --- 5) 计数回归 -----------------------------------------------------------

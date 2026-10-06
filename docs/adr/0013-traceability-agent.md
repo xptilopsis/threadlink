@@ -126,6 +126,36 @@ D4-R3 已交付**纯 DB** 追溯链构建器 `build_trace_chain`（契约 §3.1 
 `docs/interface_contract.md`（§6 写入规则 L143 / AgentRun 契约 L244 / §7 L288）与 `docs/data_dictionary.md`（L504）
 的 `reason` 枚举已补 `ambiguous`（提交 `84c5268`），与 `schemas.agent_outputs.FailureReason` 一致。
 
+## D7-R3 增补（集成缓冲 + 收口）
+
+### 1. `prompts/traceability_agent/v1` 冻结（blob 口径）
+
+| 文件 | sha256（`git cat-file blob HEAD:<path>`） |
+| --- | --- |
+| `system.md` | `b56e061ca2aeef73daa7b26deb29a2629f38d274484863efc83bea115ef0b241` |
+| `user_template.md` | `84962e3df0e136da249a41e48e9274447e571e4ec6c4bc88745001c646efe107` |
+| `schema.json` | `b8ff9b4088ab7a95422b5971581f45419d504c699d0899c4080fddee4599a71a` |
+
+- **策略**（同 D5/D6）：v1 **不可改**，调优走 **v2** 新目录 + `prompt_version` 升级。
+- **非确定性声明**：跨次措辞差异**接受、不追**；live 断言只锁值域/字段/计数，不锁逐字文本。
+- 基准为**仓库 blob**（工作树因 `core.autocrlf` 呈 CRLF；工作树值仅作收口报告附录对照）。
+- `prompts/traceability_agent/v1/failures/` 为**失败样例沉淀目录**（不纳入冻结，可增）。
+
+### 2. `TraceLink` 重复边语义（v1 定稿，无代码）
+
+- **唯一性** = `(project, from_type, from_id, to_type, to_id, relation_type)` **全元组**。
+- **现库约束原文**（`traceability/models.py::TraceLink.Meta`）：
+  `UniqueConstraint(fields=["project", "from_type", "from_id", "to_type", "to_id", "relation_type"], name="uq_tracelink_edge")`
+  ——与定稿**逐字一致**。
+- **同元组二次写入** = **DB 层拒绝**（`IntegrityError`）。
+- **approve 流程** = **写入前同元组去重跳过**（`agents/bom_selection.py::approve_bom_selection`：先 `filter(同元组).exists()`，存在即跳过、不新建）。
+- **不做跨 run 的确认合并**：同一元组只保留一条 `TraceLink`；二次 approve 不因新 run 更新既有边的 `confirmed_by`。
+
+### 3. 集成缓冲评估：`replaces`「仅限排除清单内」硬执行 → **延至 v2**
+
+- **现状（v1）**：`replaces_part_id` 由 prompt 约束 LLM 从「被排除清单」选取；管道仅做**存在性核验**（幻觉编号 → `failed`）；**"在列"未硬执行**。
+- **评估见收口报告 §1**（成本/收益/风险三行）。**结论：v1 维持 prompt 约束 + 存在性核验，硬执行延至 v2。**
+
 ## D7 台账（R1 登记）
 
 | 项 | 归属 | 说明 |

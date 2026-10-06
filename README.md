@@ -253,3 +253,24 @@ curl -X POST http://127.0.0.1:8000/agents/bom-selection/run/ ^
 ```
 
 **队列派发**（`/admin/agents/agentrun/`）：`requirement` 走确认流程（写 Requirement+TraceLink）；`bom_selection` **reject** 生效、**approve** 返回「未实现（D6-R3）」（不写实体）；未知 `agent_name` 跳过。断网开发可 `LLM_BACKEND=fake`（回放、**不落 AgentRun**）。
+## 演示流程：追溯链解释（Traceability，D7-R1）
+
+链结构（`root` / `found` / `complete` / `nodes` / `edges` / `missing`）由 **DB 权威**派生（`traceability/chain.py`，冻结）；LLM 只写中文 `summary` 与 `trace_refs` 建议（经核验）。序列号未命中 → **短路**（`found=false`，**不调用 LLM、不产生 AgentRun**，HTTP 200；GT-TRACE-003）。
+
+**management command**：
+
+```cmd
+.venv\Scripts\python.exe manage.py run_traceability SN-DEMO-001 --project DEMO-GW
+```
+
+未命中时输出「未命中，无 run 产生」；命中时输出 run id + 中文摘要。
+
+**契约端点**（响应 `{agent_run, output}`）：
+
+```cmd
+curl -X POST http://127.0.0.1:8000/agents/traceability/run/ ^
+  -H "Content-Type: application/json" ^
+  -d "{\"project_id\": \"DEMO-GW\", \"serial_number\": \"SN-DEMO-001\", \"query_type\": \"serial\", \"prompt_id\": \"prompt.traceability.chain\", \"prompt_version\": \"v1\"}"
+```
+
+**核验**：`trace_refs` 的每个端点经 `agents/verification.verify_references`；失败 → `status=failed` + `invalid_references`（不进人工确认队列）。断网开发可 `LLM_BACKEND=fake`（回放 `tests/fixtures/llm_fake/prompt.traceability.chain.json`、**不落 AgentRun**）。

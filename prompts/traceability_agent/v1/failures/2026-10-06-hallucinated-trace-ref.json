@@ -1,0 +1,17 @@
+{
+  "_note": "D7-R1 失败样例——沙箱 craft 复现的『trace_refs 引用核验失败』TraceabilityAgentOutput 负载（非 live）。",
+  "context": {
+    "prompt_id": "prompt.traceability.chain",
+    "prompt_version": "v1",
+    "scenario": "LLM 在 trace_refs 中建议 from=ECN-999（不存在于 project）→ 核验层判 not_found → status=failed、invalid_references 落库、不进队列"
+  },
+  "agent_run": {
+    "agent_name": "traceability",
+    "status": "failed",
+    "reference_check_passed": false,
+    "output_schema_valid": true,
+    "invalid_references": [
+      {"entity_type": "ecn", "entity_id": "ECN-999", "reason": "not_found"}
+    ]
+  }
+}

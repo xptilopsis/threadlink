@@ -16,8 +16,13 @@ from agents import llm
 from agents.bom_selection import PromptMissingError, run_bom_selection_agent
 from agents.models import AgentRun
 from agents.requirement import RequirementAgentError, run_requirement_agent
+from agents.traceability import (
+    PromptMissingError as TraceabilityPromptMissingError,
+)
+from agents.traceability import run_traceability_agent
 from core.models import Document, Project
 from core.selection import Criteria
+from traceability.services import AmbiguousReferenceError
 
 
 def _serialize_run(run):
@@ -141,6 +146,53 @@ def bom_selection_run_view(request):
             temperature=payload.get("temperature", 0.2),
         )
     except PromptMissingError as exc:
+        return JsonResponse({"error": str(exc)}, status=422)
+    except llm.LLMError as exc:
+        return JsonResponse({"error": str(exc), "error_type": exc.category}, status=502)
+
+    body = {"output": summary.get("output"), "summary": summary}
+    if summary.get("agent_run_id"):
+        run = AgentRun.objects.filter(pk=summary["agent_run_id"]).first()
+        if run is not None:
+            body["agent_run"] = _serialize_run(run)
+    return JsonResponse(body, status=200 if summary.get("ok") else 422)
+
+@login_required
+@require_POST
+def traceability_run_view(request):
+    """``POST /agents/traceability/run/``（契约 §4.3）。
+
+    未命中 → HTTP 200 + ``found=false`` 空链，**不产生 AgentRun**（GT-TRACE-003）。
+    """
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "invalid_json"}, status=400)
+
+    project_id = payload.get("project_id")
+    serial = payload.get("serial_number")
+    if not project_id or not serial:
+        return JsonResponse({"error": "project_id 与 serial_number 必填"}, status=400)
+
+    project = Project.objects.filter(code=str(project_id)).first()
+    if project is None and str(project_id).isdigit():
+        project = Project.objects.filter(pk=int(project_id)).first()
+    if project is None:
+        return JsonResponse({"error": f"project 不存在：{project_id}"}, status=404)
+
+    try:
+        summary = run_traceability_agent(
+            project,
+            serial,
+            request.user,
+            query_type=payload.get("query_type", "serial"),
+            model=payload.get("model"),
+            temperature=payload.get("temperature", 0.0),
+        )
+    except AmbiguousReferenceError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    except TraceabilityPromptMissingError as exc:
         return JsonResponse({"error": str(exc)}, status=422)
     except llm.LLMError as exc:
         return JsonResponse({"error": str(exc), "error_type": exc.category}, status=502)

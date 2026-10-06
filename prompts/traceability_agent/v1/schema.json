@@ -1,0 +1,22 @@
+{
+  "_comment": "参考件（reference only）。权威 = agents/traceability.py 内部解释模型 + schemas/agent_outputs.TraceabilityAgentOutput；call_json 从 Pydantic 派生，本文件仅供人工阅读与 prompt 约束对照。",
+  "type": "object",
+  "required": ["summary"],
+  "properties": {
+    "summary": {"type": "string", "minLength": 1},
+    "trace_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from_type", "from_id", "to_type", "to_id", "relation_type"],
+        "properties": {
+          "from_type": {"type": "string", "minLength": 1},
+          "from_id": {"type": "string", "minLength": 1},
+          "to_type": {"type": "string", "minLength": 1},
+          "to_id": {"type": "string", "minLength": 1},
+          "relation_type": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

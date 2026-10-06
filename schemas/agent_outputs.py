@@ -51,11 +51,16 @@ class AgentRunStatus(str, Enum):
 
 
 class FailureReason(str, Enum):
-    """引用存在性核验失败原因（D2 决策）。"""
+    """引用存在性核验失败原因（D2 决策；D7-R1 受控扩展 ``+ambiguous``）。
+
+    ``ambiguous`` 对应 ``traceability.services.AmbiguousReferenceError``（同 project
+    内业务编号多命中，fail-loud）；D4-R1 登记项②、D5 遗留，D7-R1 证据先行后补齐。
+    """
 
     NOT_FOUND = "not_found"
     WRONG_PROJECT = "wrong_project"
     UNKNOWN_TYPE = "unknown_type"
+    AMBIGUOUS = "ambiguous"
 
 
 class EntityType(str, Enum):

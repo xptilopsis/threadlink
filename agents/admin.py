@@ -75,7 +75,28 @@ class AgentRunAdmin(admin.ModelAdmin):
                     skipped += 1
                     self.message_user(request, f"#{run.pk} 处置异常：{exc}", level=messages.ERROR)
                 continue
-            if run.agent_name not in ("requirement", "bom_selection"):
+            if run.agent_name == "traceability" and action == "approve":
+                from agents.traceability import approve_traceability
+
+                try:
+                    approve_traceability(run, request.user)
+                    done += 1
+                    self.message_user(
+                        request,
+                        f"#{run.pk} 已确认：traceability 纯审计确认（无实体写入）",
+                    )
+                except ConfirmationError as exc:
+                    skipped += 1
+                    self.message_user(
+                        request, f"#{run.pk} 跳过：{exc}", level=messages.WARNING
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    skipped += 1
+                    self.message_user(
+                        request, f"#{run.pk} 处置异常：{exc}", level=messages.ERROR
+                    )
+                continue
+            if run.agent_name not in ("requirement", "bom_selection", "traceability"):
                 skipped += 1  # 未知 agent_name → 跳过
                 continue
             try:

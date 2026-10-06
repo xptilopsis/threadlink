@@ -87,6 +87,45 @@ D4-R3 已交付**纯 DB** 追溯链构建器 `build_trace_chain`（契约 §3.1 
 3. **实测建议常为空**：`live` 取证（run 13）`trace_refs=[]`；若改走「`trace_refs` → `TraceLink`」通常无内容可写，收益不足却引入未裁决的写路径。
 4. **通用规则不等于专属定义**：§6「写入规则」规则 5「输出落库（实体 + TraceLink）」是**通用表述**，契约**无 traceability 专属写入定义**；据 §8「未经确认的候选不得进入正式数据与生效追溯链」原则，纯审计确认是**无歧义**实现，避免为无明文语义自造实体写入。
 
+## D7-R2 增补
+
+### 1. 派发矩阵（`AgentRunAdmin._handle`，`agents/admin.py`）
+
+| agent_name | approve | reject |
+| --- | --- | --- |
+| `requirement` | 现有 confirmation 流程（写 Requirement + RequirementParam + TraceLink） | 通用 rejected（不写实体） |
+| `bom_selection` | `approve_bom_selection`（draft Bom + BomItem + replaces TraceLink） | 通用 rejected（不写实体） |
+| `traceability` | **`approve_traceability`（纯审计确认，零实体写入）** | 通用 rejected（不写实体） |
+| 未知 | 跳过 + 计数 | 跳过 + 计数 |
+
+### 2. human-rejected 落档（D5 约定关账）
+
+- `settings.FAILURES_ROOT = BASE_DIR / "prompts"`。
+- `reject` **事务提交后** best-effort 写
+  `<FAILURES_ROOT>/<agent_dir>/v1/failures/<YYYY-MM-DD>-human-rejected-<run_id>.md`
+  （`agent_dir`：`requirement`→`requirement_agent` / `bom_selection`→`bom_selection_agent` / `traceability`→`traceability_agent`）。
+- 内容：元数据块（run id / agent_name / prompt_id / prompt_version / model / 时间 / 来源=human-rejected）+ `output_json` 摘要
+  （`summary` 优先，卡片 / 候选 / 节点兜底；超 2000 字符截断并注明）。
+- **best-effort 边界**：写失败仅 `logging.warning`，**不阻塞、不回滚** reject；同 run 覆盖。
+
+### 3. `source_refs` 回填（`traceability/chain.py`，D4 登记项①关账）
+
+- 节点 `source_refs` = **全部关联** `TraceLink` 的 `evidence` 聚合去重；**根节点恒为 `[]`**。
+- 边 `source_refs` = 归纳该边的 `TraceLink` 的 `evidence` 聚合去重。
+- 聚合按 `TraceLink.pk` 升序、去重稳定（键 = `json.dumps(evidence, sort_keys=True)`）→ 两次 build **逐字节一致**。
+- 无 evidence → `[]`（与回填前兼容；fixtures `trace_links` 0/39 有 evidence → 演示链仍全空）。
+
+### 4. `.type/.id` 与 `TraceRef.from_/to_` 薄适配（长期设计）
+
+`agents.verification.verify_references` 面向**来源引用**（`SourceRef`：`.type`/`.id`），`TraceRef` 面向**链引用**
+（`from_type`/`from_id`/`to_type`/`to_id`）——两者是不同结构。**不为统一而改冻结接口**；管道在核验前做薄适配
+（把 `TraceRef` 两端转 `{type, id}`）。D7-R1 裁决接受为长期设计。
+
+### 5. `FailureReason` 文档同步
+
+`docs/interface_contract.md`（§6 写入规则 L143 / AgentRun 契约 L244 / §7 L288）与 `docs/data_dictionary.md`（L504）
+的 `reason` 枚举已补 `ambiguous`（提交 `84c5268`），与 `schemas.agent_outputs.FailureReason` 一致。
+
 ## D7 台账（R1 登记）
 
 | 项 | 归属 | 说明 |

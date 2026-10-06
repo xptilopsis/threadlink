@@ -24,9 +24,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 from pydantic import BaseModel, Field
 
 from agents import llm
+from agents.confirmation import ConfirmationError
 from agents.models import AgentRun
 from agents.verification import verify_references
 from core.models import InventoryLot
@@ -244,3 +247,30 @@ def run_traceability_agent(
         "summary": output.summary,
         "output": output.model_dump(mode="json"),
     }
+
+def approve_traceability(agent_run, user):
+    """批准 ``traceability`` 运行 → **纯审计确认**（D7-R2 裁决 A，见 ADR-0013）。
+
+    - 前置：``status==needs_review`` 且 ``reference_check_passed is True``（``refresh_from_db`` 后判定）；
+    - 事务内**同一行** ``update(status="success", confirmed_by, confirmed_at)``；
+    - **零实体写入**（Requirement / Bom / BomItem / TraceLink 计数前后不变）——链结构为 DB 权威派生，
+      LLM 仅补 ``summary``；``trace_refs`` 为建议，落库语义在契约 §6 无 traceability 专属定义；
+    - **幂等**：非 ``needs_review`` → ``ConfirmationError``；**AgentRun 计数不变**。
+    """
+
+    agent_run.refresh_from_db()
+    if agent_run.status != "needs_review":
+        raise ConfirmationError(
+            f"不可确认：当前 status={agent_run.status!r}（须为 needs_review）"
+        )
+    if agent_run.reference_check_passed is not True:
+        raise ConfirmationError(
+            f"不可确认：reference_check_passed={agent_run.reference_check_passed!r}（须为 True）"
+        )
+
+    now = timezone.now()
+    with transaction.atomic():
+        AgentRun.objects.filter(pk=agent_run.pk).update(
+            status="success", confirmed_by=user, confirmed_at=now
+        )
+    return {"agent_run_id": agent_run.pk, "audit_only": True}

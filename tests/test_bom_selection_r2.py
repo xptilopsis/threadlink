@@ -172,8 +172,18 @@ def test_dispatch_bom_reject_works(seeded, client, project):
     assert run.confirmed_by_id == seeded.pk
 
 
-def test_dispatch_unknown_agent_skipped(seeded, client, project):
+def test_dispatch_traceability_approve_audit_only(seeded, client, project):
+    """D7-R2：traceability 派发接入 → 纯审计确认（status=success，零实体写入）。"""
+
     run = _make_run(project, agent_name="traceability")
+    _post_action(client, seeded, run, "approve_selected")
+    run.refresh_from_db()
+    assert run.status == "success"
+    assert run.confirmed_by_id == seeded.pk
+
+
+def test_dispatch_unknown_agent_skipped(seeded, client, project):
+    run = _make_run(project, agent_name="unknown_agent")
     _post_action(client, seeded, run, "approve_selected")
     run.refresh_from_db()
     assert run.status == "needs_review"

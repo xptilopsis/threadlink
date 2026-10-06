@@ -8,11 +8,18 @@
 - **边界**：approve/reject **不产生新 AgentRun 行**（只更新），AgentRun 计数不变。
 - **源文档编号口径**：`AgentRun` 无 document FK，源文档编号取自卡片 `source_refs` 中 `type=="document"`
   的第一条 `id`（prompt 已强制每卡带 document 引用）；缺失则 fail-loud。
-- 文件沉淀（rejected → `prompts/*/failures/`，human-rejected 标注）按契约约定 **D7 实现，本轮不做**。
+- 文件沉淀（rejected → `prompts/*/failures/`，human-rejected 标注）：**D7-R2 实现**——reject 事务提交后
+  **best-effort** 落 `<FAILURES_ROOT>/<agent_dir>/v1/failures/<YYYY-MM-DD>-human-rejected-<run_id>.md`
+  （写失败仅 `logging.warning`、**不阻塞不回滚**；同 run 覆盖）。
 """
 
 from __future__ import annotations
 
+import logging
+from datetime import date
+from pathlib import Path
+
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -21,9 +28,19 @@ from core.models import Requirement, RequirementParam, RequirementStatus
 from schemas.agent_outputs import RequirementAgentOutput
 from traceability.models import TraceLink
 
+logger = logging.getLogger(__name__)
+
 APPROVED_STATUS = "success"
 REJECTED_STATUS = "rejected"
 DOCUMENT_EDGE = "derived_from"
+
+# D7-R2：agent_name → prompt 目录（human-rejected 落档）
+AGENT_FAILURE_DIRS = {
+    "requirement": "requirement_agent",
+    "bom_selection": "bom_selection_agent",
+    "traceability": "traceability_agent",
+}
+HUMAN_REJECTED_SUMMARY_LIMIT = 2000
 
 
 class ConfirmationError(Exception):
@@ -114,11 +131,70 @@ def approve(agent_run, user):
     return created_codes
 
 
+def _human_rejected_summary(agent_run) -> str:
+    """从 ``output_json`` 提取人类可读摘要（``summary`` 优先，超长截断并注明）。"""
+
+    data = agent_run.output_json or {}
+    summary = data.get("summary")
+    if summary:
+        text = str(summary)
+    elif data.get("cards"):
+        titles = [c.get("title", "") for c in data["cards"] if isinstance(c, dict)]
+        text = "卡片标题：" + "；".join(titles)
+    elif data.get("candidates"):
+        nums = [c.get("part_number", "") for c in data["candidates"] if isinstance(c, dict)]
+        text = "候选物料：" + "、".join(nums)
+    elif data.get("nodes"):
+        text = f"链节点数：{len(data['nodes'])}；missing={data.get('missing')}"
+    else:
+        text = "(无可用摘要)"
+    if len(text) > HUMAN_REJECTED_SUMMARY_LIMIT:
+        text = (
+            f"{text[:HUMAN_REJECTED_SUMMARY_LIMIT]}"
+            f"…（已截断，原文 {len(text)} 字符）"
+        )
+    return text
+
+
+def write_human_rejected_sample(agent_run) -> Path | None:
+    """best-effort 落档 human-rejected 样例；失败仅 ``logging.warning``（不阻塞 / 不回滚）。"""
+
+    agent_dir = AGENT_FAILURE_DIRS.get(agent_run.agent_name)
+    if not agent_dir:
+        logger.warning("human-rejected 落档跳过：未知 agent_name=%r", agent_run.agent_name)
+        return None
+
+    stamp = (agent_run.confirmed_at or agent_run.created_at or timezone.now()).date()
+    failures_dir = Path(settings.FAILURES_ROOT) / agent_dir / "v1" / "failures"
+    path = failures_dir / f"{stamp.isoformat()}-human-rejected-{agent_run.pk}.md"
+    content = (
+        f"# Human-rejected sample（run {agent_run.pk}）\n\n"
+        f"- run id: {agent_run.pk}\n"
+        f"- agent_name: {agent_run.agent_name}\n"
+        f"- prompt_id: {agent_run.prompt_id}\n"
+        f"- prompt_version: {agent_run.prompt_version}\n"
+        f"- model: {agent_run.model}\n"
+        f"- 时间: {stamp.isoformat()}\n"
+        f"- 来源: human-rejected（人工拒绝）\n\n"
+        f"## output_json 摘要\n\n"
+        f"{_human_rejected_summary(agent_run)}\n"
+    )
+    try:
+        failures_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 —— best-effort：不阻塞、不回滚 reject
+        logger.warning("human-rejected 落档失败（忽略）：%s", exc)
+        return None
+    return path
+
+
 def reject(agent_run, user):
-    """拒绝 AgentRun：仅同行转 rejected，不写任何实体。"""
+    """拒绝 AgentRun：仅同行转 rejected、不写任何实体；事务提交后 best-effort 落 human-rejected 样例。"""
 
     _ensure_confirmable(agent_run)
     with transaction.atomic():
         AgentRun.objects.filter(pk=agent_run.pk).update(
             status=REJECTED_STATUS, confirmed_by=user, confirmed_at=timezone.now()
         )
+    agent_run.refresh_from_db()
+    write_human_rejected_sample(agent_run)

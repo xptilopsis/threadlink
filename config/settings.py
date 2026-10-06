@@ -154,6 +154,9 @@ LLM_EXTRA_BODY = os.environ.get("LLM_EXTRA_BODY", "")
 
 DOCUMENTS_ROOT = BASE_DIR / "documents"
 
+# D7-R2：失败样例沉淀根（human-rejected 落档路径 `<root>/<agent_dir>/v1/failures/`）
+FAILURES_ROOT = BASE_DIR / "prompts"
+
 
 def resolve_doc_path(file_path: str) -> Path:
     """把 ``Document.file_path``（BASE_DIR 相对）解析为绝对路径，并校验仍在 BASE_DIR 内。"""

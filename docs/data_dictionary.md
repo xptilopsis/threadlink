@@ -501,7 +501,7 @@
 | output_json | json | 否 | LLM 输出；解析失败时为 null |
 | output_schema_valid | boolean | 否 | 输出是否通过 Pydantic schema 校验 |
 | reference_check_passed | boolean | 否 | 引用存在性核验是否通过；null=未执行到核验步骤，false=核验失败 |
-| invalid_references | json | 否 | 核验失败条目 `[{entity_type, entity_id, reason}]`，reason ∈ not_found / wrong_project / unknown_type |
+| invalid_references | json | 否 | 核验失败条目 `[{entity_type, entity_id, reason}]`，reason ∈ not_found / wrong_project / unknown_type / ambiguous |
 | references | json | 否 | 引用来源（`SourceRef[]`，业务编号），防幻觉 |
 | confirmed_by_id | bigint | 否 | FK → User（SET NULL），确认人（读契约字段 `confirmed_by`） |
 | confirmed_at | timestamptz | 否 | 确认时间 |

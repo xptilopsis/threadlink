@@ -140,7 +140,7 @@
 
 **统一失败语义**：LLM 输出无法通过 Pydantic 校验时，端点返回已落库的 `AgentRunRead`，其中 `status="failed"`、`output_schema_valid=false`、`output_json=null`、`error` 为校验错误摘要；HTTP 状态码为 `422`。
 
-**引用存在性核验（独立步骤，D2）**：Pydantic 仅做结构校验，**无法拦截幻觉 ID**。schema 校验通过后，业务层必须执行引用存在性核验：每个结构化引用 `(entity_type, entity_id)` 必须 (a) `entity_type` 在实体类型白名单（`EntityType`）内，(b) 实体存在，(c) 属于同一 `project_id`；`entity_id` 为业务编号（R2）。核验失败时 `AgentRun.status="failed"`、`reference_check_passed=false`，失败条目写入 `invalid_references`（元素含 `entity_type` / `entity_id` / `reason ∈ {not_found|wrong_project|unknown_type}`），输出保留于 `output_json` 供调试并沉淀到 `prompts/<agent>/v1/failures/`，**不进入人工确认队列**；HTTP `422`。自由文本引用（页码 / 章节号 / 文件名片段）不做核验。
+**引用存在性核验（独立步骤，D2）**：Pydantic 仅做结构校验，**无法拦截幻觉 ID**。schema 校验通过后，业务层必须执行引用存在性核验：每个结构化引用 `(entity_type, entity_id)` 必须 (a) `entity_type` 在实体类型白名单（`EntityType`）内，(b) 实体存在，(c) 属于同一 `project_id`；`entity_id` 为业务编号（R2）。核验失败时 `AgentRun.status="failed"`、`reference_check_passed=false`，失败条目写入 `invalid_references`（元素含 `entity_type` / `entity_id` / `reason ∈ {not_found|wrong_project|unknown_type|ambiguous}`），输出保留于 `output_json` 供调试并沉淀到 `prompts/<agent>/v1/failures/`，**不进入人工确认队列**；HTTP `422`。自由文本引用（页码 / 章节号 / 文件名片段）不做核验。
 
 ### 4.1 POST `/agents/requirement/run/`
 
@@ -241,7 +241,7 @@
 | `output_json` | object \| null | 否 | LLM 输出；解析失败时为 null |
 | `output_schema_valid` | bool | 是 | 输出是否通过 Pydantic 校验 |
 | `reference_check_passed` | bool \| null | 否 | 引用存在性核验是否通过；`null`=未执行到核验步骤，`false`=核验失败 |
-| `invalid_references` | array | 否 | 核验失败条目 `{entity_type, entity_id, reason}`；`reason ∈ not_found\|wrong_project\|unknown_type` |
+| `invalid_references` | array | 否 | 核验失败条目 `{entity_type, entity_id, reason}`；`reason ∈ not_found\|wrong_project\|unknown_type\|ambiguous` |
 | `references` | array | 是 | 引用来源（`SourceRef[]`），防幻觉 |
 | `status` | enum | 是 | `failed` / `needs_review` / `success` / `rejected`（固定四值，R1） |
 | `error` | string \| null | 否 | 失败信息（含校验错误摘要） |
@@ -285,7 +285,7 @@
 | `traceability` | `TraceabilityAgentOutput` |
 
 - **校验分两步**：①`schema 校验`（本表模型）；②`引用存在性核验`（独立步骤，D2）。schema 通过不代表数据可信——`SourceRef.id` / `recommended_part_id` / `TraceNode.node_id` 等引用必须真实存在、类型匹配且同属一个 `project_id`；Pydantic 无法拦截幻觉 ID。
-- **失败处理**：捕获 `pydantic.ValidationError`，将 `AgentRun.status` 置为 `failed`、`output_schema_valid=false`、`error=str(exc)`，HTTP 返回 `422`。引用核验失败时置 `status="failed"`、`reference_check_passed=false`、`invalid_references` 落库（`reason ∈ {not_found|wrong_project|unknown_type}`），同样返回 `422`；失败样本沉淀到 `prompts/<agent>/v1/failures/`。前端应展示该 AgentRun 以便排查，而非静默丢弃。
+- **失败处理**：捕获 `pydantic.ValidationError`，将 `AgentRun.status` 置为 `failed`、`output_schema_valid=false`、`error=str(exc)`，HTTP 返回 `422`。引用核验失败时置 `status="failed"`、`reference_check_passed=false`、`invalid_references` 落库（`reason ∈ {not_found|wrong_project|unknown_type|ambiguous}`），同样返回 `422`；失败样本沉淀到 `prompts/<agent>/v1/failures/`。前端应展示该 AgentRun 以便排查，而非静默丢弃。
 
 ---
 

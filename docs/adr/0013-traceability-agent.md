@@ -76,6 +76,17 @@ D4-R3 已交付**纯 DB** 追溯链构建器 `build_trace_chain`（契约 §3.1 
 - `ambiguous` 枚举缺口闭合；`invalid_references` 语义与解析层一致。
 - 留痕：字段权属、短路边界、`trace_refs` 口径、核验范围、两阶段写、prompt 取值、受控扩展均固化本 ADR。
 
+## traceability 确认语义（v1，D7-R2 裁决：纯审计确认）
+
+**裁决（2026-10-06）**：`traceability` 的 `approve` = **纯审计确认**——仅同行 `update(status="success", confirmed_by, confirmed_at)`，**不写任何实体 / `TraceLink`**。
+
+**四条理由：**
+
+1. **链结构为 DB 权威派生**：`nodes` / `edges` 的数据源即已有 `TraceLink` 与实体解析结果，`approve` 无「新实体」可写；重写派生数据无意义。
+2. **LLM 只产文案与建议**：`summary` 是中文文案（非实体），`trace_refs` 是**引用建议**（R1 已定「仅建议」）；建议落库为 `TraceLink` 的语义在契约中**无明文**。
+3. **实测建议常为空**：`live` 取证（run 13）`trace_refs=[]`；若改走「`trace_refs` → `TraceLink`」通常无内容可写，收益不足却引入未裁决的写路径。
+4. **通用规则不等于专属定义**：§6「写入规则」规则 5「输出落库（实体 + TraceLink）」是**通用表述**，契约**无 traceability 专属写入定义**；据 §8「未经确认的候选不得进入正式数据与生效追溯链」原则，纯审计确认是**无歧义**实现，避免为无明文语义自造实体写入。
+
 ## D7 台账（R1 登记）
 
 | 项 | 归属 | 说明 |

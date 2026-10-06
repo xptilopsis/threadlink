@@ -270,6 +270,8 @@
 6. 人工拒绝 → `status="rejected"`，更新 `confirmed_by` / `confirmed_at`（必填）；**不落库**正式实体与 TraceLink，运行记录保留供审计与迭代。
 7. **空结果（`found=false` 的追溯查询）不调用 LLM，因此不产生 AgentRun**。
 
+> **traceability 确认语义（v1）**：`traceability` 的链结构为 **DB 权威派生**（数据源即已有 `TraceLink`），LLM 仅补 `summary`（`trace_refs` 为建议）。故其 `approve` 为**纯审计确认**——仅将 `AgentRun` 置 `status="success"` 并写 `confirmed_by` / `confirmed_at`，**不写任何实体 / `TraceLink`**（规则 5 的「输出落库」对 traceability 无对应新实体）；`reject` 同规则 6（不落库）并落 human-rejected 失败样例。裁决依据见 ADR-0013。
+
 ---
 
 ## 7. 输出校验与失败语义

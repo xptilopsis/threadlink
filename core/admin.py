@@ -34,8 +34,54 @@ from core.models import (
 )
 
 
+# ---------------------------------------------------------------------------
+# D11-R3：role → 可写实体集（轻量权限；只影响 Admin 写路径，读路径不设限）
+# ---------------------------------------------------------------------------
+
+WRITABLE_BY_ROLE = {
+    "engineer": frozenset(
+        {"requirement", "requirementparam", "part", "partparam", "bom", "bomitem"}
+    ),
+    "procurement": frozenset(
+        {"supplier", "supplierpart", "purchaseorder", "inventorylot", "workorder"}
+    ),
+    "test": frozenset({"testcase", "testrun"}),
+    "quality": frozenset({"ecn", "ecnimpact", "tracelink", "agentrun"}),
+}
+
+
+class RoleWritePermissionMixin:
+    """D11-R3：按 ``role`` 限定 Admin **写**路径（add/change/delete）；**读路径不受限**。
+
+    - ``is_superuser`` / ``role == "admin"`` → 全权（Django superuser 语义保留）；
+    - 其余 role → 仅其映射内实体可写；未映射实体 → 只读；
+    - ``has_view_permission`` 恒 True（active 用户可读；非 staff 由 AdminSite 层拦截）。
+    """
+
+    def _role_can_write(self, request) -> bool:
+        user = request.user
+        if not getattr(user, "is_active", False):
+            return False
+        if user.is_superuser or getattr(user, "role", None) == "admin":
+            return True
+        allowed = WRITABLE_BY_ROLE.get(getattr(user, "role", None), frozenset())
+        return self.model._meta.model_name in allowed
+
+    def has_add_permission(self, request):
+        return self._role_can_write(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._role_can_write(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._role_can_write(request)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(getattr(request.user, "is_active", False))
+
+
 @admin.register(Project)
-class ProjectAdmin(admin.ModelAdmin):
+class ProjectAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("code", "name", "status", "created_at")
     search_fields = ("code", "name")
     list_filter = ("status",)
@@ -48,7 +94,7 @@ class PartParamInline(admin.TabularInline):
 
 
 @admin.register(Part)
-class PartAdmin(admin.ModelAdmin):
+class PartAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = (
         "part_number",
         "name",
@@ -71,7 +117,7 @@ class SupplierPartInline(admin.TabularInline):
 
 
 @admin.register(Supplier)
-class SupplierAdmin(admin.ModelAdmin):
+class SupplierAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("code", "name", "status", "contact_name")
     search_fields = ("code", "name", "contact_name")
     list_filter = ("status",)
@@ -116,7 +162,7 @@ class RequirementParamInline(admin.TabularInline):
 
 
 @admin.register(Requirement)
-class RequirementAdmin(admin.ModelAdmin):
+class RequirementAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = (
         "code",
         "title",
@@ -146,7 +192,7 @@ class TestRunInline(admin.TabularInline):
 
 
 @admin.register(TestCase)
-class TestCaseAdmin(admin.ModelAdmin):
+class TestCaseAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("code", "name", "test_type", "status")
     list_filter = ("test_type", "status")
     search_fields = ("code", "name")
@@ -155,7 +201,7 @@ class TestCaseAdmin(admin.ModelAdmin):
 
 
 @admin.register(TestRun)
-class TestRunAdmin(admin.ModelAdmin):
+class TestRunAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("run_no", "test_case", "sample_serial", "result", "tested_at", "tester")
     list_filter = ("result", "tested_at")
     search_fields = ("run_no", "sample_serial")
@@ -227,7 +273,7 @@ def render_bom_tree(rows):
 
 
 @admin.register(Bom)
-class BomAdmin(admin.ModelAdmin):
+class BomAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("bom_no", "name", "version", "status", "created_at")
     list_filter = ("status",)
     search_fields = ("bom_no", "name")
@@ -242,14 +288,14 @@ class BomAdmin(admin.ModelAdmin):
 
 
 @admin.register(BomItem)
-class BomItemAdmin(admin.ModelAdmin):
+class BomItemAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("item_no", "bom", "parent_item", "part", "quantity", "unit", "substitute_group")
     list_filter = ("bom", "part")
     search_fields = ("item_no", "part__part_number")
 
 
 @admin.register(InventoryLot)
-class InventoryLotAdmin(admin.ModelAdmin):
+class InventoryLotAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = (
         "serial_number",
         "part",
@@ -280,7 +326,7 @@ class InventoryLotAdmin(admin.ModelAdmin):
 
 
 @admin.register(PurchaseOrder)
-class PurchaseOrderAdmin(admin.ModelAdmin):
+class PurchaseOrderAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = (
         "po_number",
         "supplier",
@@ -296,7 +342,7 @@ class PurchaseOrderAdmin(admin.ModelAdmin):
 
 
 @admin.register(WorkOrder)
-class WorkOrderAdmin(admin.ModelAdmin):
+class WorkOrderAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("code", "bom", "quantity", "status", "due_date")
     list_filter = ("status",)
     search_fields = ("code",)
@@ -332,7 +378,7 @@ class ECNImpactInline(admin.TabularInline):
 
 
 @admin.register(ECN)
-class ECNAdmin(admin.ModelAdmin):
+class ECNAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("ecn_number", "title", "status", "effective_date")
     list_filter = ("status",)
     search_fields = ("ecn_number", "title")
@@ -372,7 +418,7 @@ class ECNAdmin(admin.ModelAdmin):
                 continue
             except Exception as exc:  # noqa: BLE001 —— 异常以 message 呈现，不 500
                 self.message_user(
-                    request, f"{ecn.ecn_number} 应用异常：{exc}", level=messages.ERROR
+                    request, f"{ecn.ecn_number} 应用失败：{exc}", level=messages.ERROR
                 )
                 continue
             rewritten = (
@@ -389,7 +435,7 @@ class ECNAdmin(admin.ModelAdmin):
 
 
 @admin.register(ECNImpact)
-class ECNImpactAdmin(admin.ModelAdmin):
+class ECNImpactAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_display = ("ecn", "affected_type", "affected_id", "impact_type")
     list_filter = ("affected_type", "impact_type")
     search_fields = ("ecn__ecn_number", "affected_id")

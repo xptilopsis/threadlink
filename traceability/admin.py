@@ -11,6 +11,7 @@
 from django import forms
 from django.contrib import admin
 
+from core.admin import RoleWritePermissionMixin
 from traceability.models import TraceLink
 from traceability.services import TraceReferenceError, resolve_entity
 
@@ -35,7 +36,7 @@ class TraceLinkAdminForm(forms.ModelForm):
 
 
 @admin.register(TraceLink)
-class TraceLinkAdmin(admin.ModelAdmin):
+class TraceLinkAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     form = TraceLinkAdminForm
 
     list_display = (

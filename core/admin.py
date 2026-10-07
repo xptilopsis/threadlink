@@ -300,6 +300,24 @@ class WorkOrderAdmin(admin.ModelAdmin):
     list_display = ("code", "bom", "quantity", "status", "due_date")
     list_filter = ("status",)
     search_fields = ("code",)
+    readonly_fields = ("kitting_panel",)
+
+    @admin.display(description="齐套摘要（只读，D11-R1）")
+    def kitting_panel(self, obj):
+        from core.kitting import analyze_kitting
+
+        if obj is None or obj.pk is None:
+            return "（保存后方可计算）"
+        try:
+            result = analyze_kitting(obj)
+        except Exception as exc:  # noqa: BLE001 —— 面板不得 500
+            return f"计算失败：{exc}"
+        if result["ready"]:
+            return "齐套：全部满足"
+        details = "、".join(
+            f"{s['part_id']}（缺 {s['shortage_qty']}）" for s in result["shortages"]
+        )
+        return f"缺料 {len(result['shortages'])} 项：{details}"
 
 
 # ---------------------------------------------------------------------------

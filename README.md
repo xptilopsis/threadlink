@@ -274,3 +274,22 @@ curl -X POST http://127.0.0.1:8000/agents/traceability/run/ ^
 ```
 
 **核验**：`trace_refs` 的每个端点经 `agents/verification.verify_references`；失败 → `status=failed` + `invalid_references`（不进人工确认队列）。断网开发可 `LLM_BACKEND=fake`（回放 `tests/fixtures/llm_fake/prompt.traceability.chain.json`、**不落 AgentRun**）。
+## 计划计算：BOM 多级展开 + 工单齐套（D11-R1）
+
+**确定性、零 LLM、零 AgentRun、纯只读**（口径见 ADR-0014 与 `docs/golden_tests.md` §2.1–§2.2）。
+
+**BOM 多级展开**：
+
+```cmd
+.venv\Scripts\python.exe manage.py bom_expand BOM-001 --hierarchy --qty 1
+```
+
+`--hierarchy` 展开全部层级（默认仅顶层）；`--qty N` 指定展开基数。输出层级缩进表 + `totals`（按物料汇总）。
+
+**工单齐套**：
+
+```cmd
+.venv\Scripts\python.exe manage.py kitting_check WO-001
+```
+
+输出齐套结论 + 缺料表（需求 / 可用 / 缺口 / 在途 / 最晚到货日 / 风险标记）+ 替代可行项。`WorkOrderAdmin` change 页亦含**只读齐套摘要面板**。在途量来源 = `TraceLink(Part -ordered_by-> PO).metadata.quantity`（`PO.status ∈ {open, partial}`）。

@@ -422,3 +422,70 @@ def test_commands_smoke(seeded, project, capsys):
     call_command("kitting_check", "WO-001")
     out2 = capsys.readouterr().out
     assert "WO-001" in out2 and "齐套" in out2
+
+# --- D11-R2 Step 0：ordered_by.metadata.quantity 承重接口锁定 -----------------
+def test_kitting_absent_quantity_is_zero(seeded, project):
+    part = _get_part(project, "PART-019")
+    bom = _mk_bom(project, seeded, "BOM-K9")
+    _mk_item(bom, part, 1, "BI-K9")
+    wo = _mk_wo(project, seeded, "WO-K9", bom, 10)
+    supplier = Supplier.objects.filter(project=project).first()
+    _mk_po(project, supplier, "PO-K9", "open", date(2026, 3, 1))
+    # absent quantity（无 metadata）→ 0，等价无在途
+    TraceLink.objects.create(
+        project=project,
+        from_type="part",
+        from_id="PART-019",
+        to_type="purchase_order",
+        to_id="PO-K9",
+        relation_type="ordered_by",
+    )
+    shortage = analyze_kitting(wo)["shortages"][0]
+    assert shortage["in_transit_qty"] == Decimal("0")
+    assert shortage["latest_arrival_date"] is None
+    assert shortage["insufficient"] is True
+
+
+def test_kitting_non_numeric_quantity_fail_loud(seeded, project):
+    from decimal import InvalidOperation
+
+    part = _get_part(project, "PART-019")
+    bom = _mk_bom(project, seeded, "BOM-K9b")
+    _mk_item(bom, part, 1, "BI-K9b")
+    wo = _mk_wo(project, seeded, "WO-K9b", bom, 10)
+    supplier = Supplier.objects.filter(project=project).first()
+    _mk_po(project, supplier, "PO-K9X", "open", date(2026, 3, 1))
+    TraceLink.objects.create(
+        project=project,
+        from_type="part",
+        from_id="PART-019",
+        to_type="purchase_order",
+        to_id="PO-K9X",
+        relation_type="ordered_by",
+        metadata={"quantity": "abc"},
+    )
+    with pytest.raises(InvalidOperation):  # 非数值 → fail-loud（数据完整性信号）
+        analyze_kitting(wo)
+
+
+# --- D11-R2 Step 0.3：WorkOrderAdmin 只读面板证据 ---------------------------
+def test_workorder_admin_kitting_panel_ok(seeded, project, client):
+    wo = WorkOrder.objects.get(project=project, code="WO-001")
+    client.force_login(seeded)
+    resp = client.get(f"/admin/core/workorder/{wo.pk}/change/")
+    assert resp.status_code == 200
+    assert "齐套摘要" in resp.content.decode()
+
+
+def test_workorder_admin_panel_error_not_500(seeded, project, client, monkeypatch):
+    import core.kitting as kitting
+
+    def boom(_work_order):  # noqa: ANN001
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(kitting, "analyze_kitting", boom)
+    wo = WorkOrder.objects.get(project=project, code="WO-001")
+    client.force_login(seeded)
+    resp = client.get(f"/admin/core/workorder/{wo.pk}/change/")
+    assert resp.status_code == 200
+    assert "计算失败" in resp.content.decode()

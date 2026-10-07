@@ -80,3 +80,21 @@ D11 引入**计划层只读计算**：BOM 多级展开（父子树 → 累计需
 - 计划层计算与 LLM 完全解耦（本 ADR 覆盖 R1；R2 = ECN 影响投影 + 正式应用）。
 - `WorkOrderAdmin` change 页含**只读齐套摘要面板**（异常捕获显示「计算失败：<原因>」，不 500）。
 - 未覆盖处均已按最小决策固化（上列 13 条），后续如需变更走新裁决。
+## D11-R2 Step 0 增补：`ordered_by.metadata.quantity` 承重接口
+
+**在途量载体**（R1 已判定）：`PurchaseOrder` 无明细行 / 无 `metadata` 字段，在途量以
+`TraceLink(from=Part, relation_type="ordered_by", to=PurchaseOrder).metadata["quantity"]` 承载。
+该接口此前仅存在于 fixtures 与代码，属**隐式约定**——人工经 Admin 建的链、后续 agent 建的链
+都不会自动带 `quantity`。R2 Step 0 将其固化为**显式契约**：
+
+| 情形 | 行为 |
+| --- | --- |
+| `metadata.quantity` 为数值（含 `int` / `float`，**排除 `bool`**） | 正常取用 |
+| `metadata` 缺 `quantity`（absent） | **0**（演示安全；等价无在途） |
+| `metadata.quantity` 非数值 | **fail-loud**（`Decimal(...)` 解析失败抛 `decimal.InvalidOperation`）——数据完整性信号，不静默吞 |
+
+- **fixtures 侧守卫**：`scripts/validate_seed.py::check_ordered_by_quantity` 断言全部 `ordered_by`
+  边 `metadata.quantity` 为数值（当前 5/5 合规）。
+- **运行期**：`core/kitting.py::_in_transit_batches` 实现上述三态（absent → 0；非数值 → 异常传播）。
+- **测试锁定**：`tests/test_planning_r1.py` 两例——无 `metadata` 的链（→ 0）、`quantity="abc"`（→ fail-loud）。
+- **未决**：更明确的异常类型（自定义 `KittingDataError`）留后续裁决；本轮不冻结 `kitting.py`。

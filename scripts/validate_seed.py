@@ -141,6 +141,9 @@ ID_INDEXED_COLLECTIONS = {"trace_links", "agent_runs"}
 AGENT_RUN_STATUS = {"failed", "needs_review", "success", "rejected"}
 CONFIRMED_STATUS = {"success", "rejected"}
 
+# D11-R2：在途量承重接口——`ordered_by` 类 TraceLink 的 metadata.quantity 必须为数值
+ORDERED_BY_RELATION = "ordered_by"
+
 # 数量断言（T2.0/V-01，对齐 PRD AC-001 清点）：== 精确清点、>= 下限
 COUNT_EQUALS = {
     "project": 1,
@@ -323,6 +326,23 @@ class Validator:
             if status not in CONFIRMED_STATUS and has_conf:
                 self.fail(f"agent_runs {aid}: status={status} 时 confirmed_by_id / confirmed_at 必须为 NULL")
 
+    def check_ordered_by_quantity(self) -> None:
+        """D11-R2：``ordered_by`` 类 TraceLink 的 ``metadata.quantity`` 必须为**数值**。
+
+        在途量（``core/kitting.py``）以该字段承重：absent → 0（演示安全）；非数值 → 运行期
+        fail-loud。此处锁定 fixtures 侧全部合规，防人工 / agent 新建链缺失 quantity 载体。
+        """
+        for row in self.rows("trace_links"):
+            if row.get("relation_type") != ORDERED_BY_RELATION:
+                continue
+            metadata = row.get("metadata")
+            quantity = metadata.get("quantity") if isinstance(metadata, dict) else None
+            if isinstance(quantity, bool) or not isinstance(quantity, (int, float)):
+                self.fail(
+                    f"trace_links {row.get('id')}: ordered_by 边 metadata.quantity "
+                    f"必须为数值，实际 {quantity!r}"
+                )
+
     def check_counts(self) -> None:
         """V-01：演示数据集清点对齐 PRD AC-001（``COUNT_EQUALS`` 精确 / ``COUNT_MIN`` 下限）。"""
         for coll, expected in COUNT_EQUALS.items():
@@ -374,6 +394,7 @@ class Validator:
         self.check_polymorphic()
         self.check_source_refs()
         self.check_agent_run_status()
+        self.check_ordered_by_quantity()
         self.check_counts()
         self.check_demo_requirements()
         return self.errors

@@ -164,11 +164,11 @@ def test_source_refs_backfill_from_evidence(seeded, project):
     payload = build_trace_chain(project.pk, "inventory_lot", SERIAL)
 
     root = next(n for n in payload["nodes"] if n["node_id"] == SERIAL)
-    assert root["source_refs"] == []  # 根节点恒为 []
+    assert evidence[0] in root["source_refs"]  # D12-R2：根亦聚合（不再恒 []）
 
     other_id = link.to_id if link.from_id == SERIAL else link.from_id
     other_node = next(n for n in payload["nodes"] if n["node_id"] == other_id)
-    assert other_node["source_refs"] == evidence
+    assert evidence[0] in other_node["source_refs"]
 
     edge = next(
         e for e in payload["edges"] if {e["from_node_id"], e["to_node_id"]} == {link.from_id, link.to_id}
@@ -176,14 +176,29 @@ def test_source_refs_backfill_from_evidence(seeded, project):
     assert edge["source_refs"] == evidence
 
 
-def test_source_refs_empty_without_evidence(seeded, project):
+def test_source_refs_empty_when_no_evidence(seeded, project):
+    """无 evidence（清空）→ 节点与边 ``source_refs`` 均为 []（回填前兼容）。"""
+
+    TraceLink.objects.filter(project=project).update(evidence=None)
     payload = build_trace_chain(project.pk, "inventory_lot", SERIAL)
     assert payload["nodes"] and payload["edges"]
     assert all(n["source_refs"] == [] for n in payload["nodes"])
     assert all(e["source_refs"] == [] for e in payload["edges"])
 
 
+def test_source_refs_aggregate_from_fixtures_evidence(seeded, project):
+    """D12-R2：fixtures 39 条 evidence 生效 → demo 链**每节点（含根）非空**（GT-TRACE-004）。"""
+
+    payload = build_trace_chain(project.pk, "inventory_lot", SERIAL)
+    assert payload["nodes"] and payload["edges"]
+    for node in payload["nodes"]:
+        assert node["source_refs"], f"{node['node_id']} source_refs 空（GT-TRACE-004）"
+    for edge in payload["edges"]:
+        assert edge["source_refs"], "edge source_refs 空"
+
+
 def test_source_refs_deterministic_with_evidence(seeded, project):
+    TraceLink.objects.filter(project=project).update(evidence=None)
     link = (
         TraceLink.objects.filter(project=project, from_type="inventory_lot", from_id=SERIAL)
         .order_by("pk")

@@ -104,6 +104,7 @@ def test_dangling_reference(seeded, client, project):
         to_type="part",
         to_id="PART-999",
         relation_type="references",
+        confirmed_by_id=seeded.pk,  # D12-R2：仅 confirmed 边入链
     )
     client.force_login(seeded)
     data = client.get("/trace/serial/SN-DEMO-001/?format=json").json()

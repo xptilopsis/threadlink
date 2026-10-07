@@ -533,6 +533,7 @@ class Command(BaseCommand):
                     else None
                 ),
                 confirmed_at=_dt(row.get("confirmed_at")),
+                evidence=row.get("evidence"),
                 metadata=row.get("metadata"),
                 created_at=_dt(row["created_at"]),
             )

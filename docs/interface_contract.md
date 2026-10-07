@@ -94,7 +94,7 @@
 
 - **路径参数**：`sn` — 序列号，如 `SN-DEMO-001`。
 - **查询参数**（可选）：`depth`（默认 0 = 全链路）、`direction`（`forward` / `backward`，默认 `backward`）。
-- **v1（DB 版）现状**：`depth` / `direction` 暂未实现——服务端忽略这两个参数、始终返回全链；截断语义与 `complete` / `missing` 的关系留 D7 定义。（仅标注现状，不改上方声明本身。）
+- **实现（DB 版，D12-R2）**：`depth` / `direction` **已实现**——`depth=0`（缺省）= 全链；`depth=N>0` = 距根 ≤N 跳（**确裁边**时 `complete=false` 且 `missing` 增 `depth_truncated`）；`direction` 缺省 = **无向遍历**（保持全链，与 GT-006 字面默认 `backward` 的偏差见 ADR-0017），显式 `forward` / `backward` 时为有向遍历；非法/负值 `depth`、非枚举 `direction` → HTTP `400`。
 - **响应**：`TraceabilityAgentOutput`（`schemas/agent_outputs.py`），语义见 §3.1。
 - **执行顺序**：先查库判定 `found`；`found=false` 时直接短路返回、不调用 LLM；仅 `found=true` 时可由 LLM 生成自然语言说明。
 - **要点**：每个 `TraceNode` 必须带 `source_refs`（引用来源，用于防幻觉）；链路缺失环节写入 `missing` 并置 `complete=false`。
@@ -111,10 +111,10 @@
   "complete": true,
   "nodes": [
     {"node_type": "requirement", "node_id": "REQ-001", "label": "输入电压与额定电流", "depth": 0, "source_refs": [{"type": "document", "id": "DOC-001"}], "confirmed": true},
-    {"node_type": "bom", "node_id": "BOM-001", "label": "工业网关主 BOM", "relation_type": "implemented_by", "depth": 1, "source_refs": [], "confirmed": true}
+    {"node_type": "bom", "node_id": "BOM-001", "label": "工业网关主 BOM", "relation_type": "implemented_by", "depth": 1, "source_refs": [{"type": "document", "id": "DOC-001"}], "confirmed": true}
   ],
   "edges": [
-    {"from_node_id": "REQ-001", "to_node_id": "BOM-001", "relation_type": "implemented_by", "confidence": null, "source_refs": []}
+    {"from_node_id": "REQ-001", "to_node_id": "BOM-001", "relation_type": "implemented_by", "confidence": null, "source_refs": [{"type": "document", "id": "DOC-001"}]}
   ],
   "missing": [],
   "trace_refs": [],

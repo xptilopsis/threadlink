@@ -293,3 +293,22 @@ curl -X POST http://127.0.0.1:8000/agents/traceability/run/ ^
 ```
 
 输出齐套结论 + 缺料表（需求 / 可用 / 缺口 / 在途 / 最晚到货日 / 风险标记）+ 替代可行项。`WorkOrderAdmin` change 页亦含**只读齐套摘要面板**。在途量来源 = `TraceLink(Part -ordered_by-> PO).metadata.quantity`（`PO.status ∈ {open, partial}`）。
+## ECN 影响投影 + 正式应用（D11-R2）
+
+**分析（只读、零写）** 与 **应用（唯一写路径，人工动作）** 两阶段；口径与最小决策见 ADR-0015。
+
+**影响投影（只读）**：
+
+```cmd
+.venv\Scripts\python.exe manage.py ecn_impact ECN-001
+```
+
+读 `ECNImpact`（影响面权威）→ 分类清单（BOM 节点 / 库存批次 / 在途 PO / 测试用例）+ `unresolved`（fail-soft）+ `consistency`（缺 `affects` 边提示）。**零写**（不改 EI / 边 / 正式实体）。`ECNAdmin` change 页含只读「影响投影」面板。
+
+**正式应用（写回 + 确认）**：
+
+```cmd
+.venv\Scripts\python.exe manage.py ecn_apply ECN-001
+```
+
+前置门：状态 ∈ `{approved, implemented}` 且 `effective_date ≤ 当日`（`approved` + 空日期 → `missing_effective_date`）。事务内：确保 `ECN→目标` `affects` 边（缺 → 建、未确认 → 补确认、已确认 → 不动）+ 写回受影响 `BomItem.part ← 替代料`（`replaces` 目标）。二次应用为 **no-op**（幂等）。亦可经 `ECNAdmin` action「应用 ECN（写回 BomItem.part + 确认 affects 边）」。

@@ -337,6 +337,55 @@ class ECNAdmin(admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("ecn_number", "title")
     inlines = [ECNImpactInline]
+    readonly_fields = ("impact_panel",)
+    actions = ("apply_selected_ecn",)
+
+    @admin.display(description="影响投影（只读，D11-R2）")
+    def impact_panel(self, obj):
+        from core.ecn import project_ecn_impact
+
+        if obj is None or obj.pk is None:
+            return "（保存后方可分析）"
+        try:
+            result = project_ecn_impact(obj)
+        except Exception as exc:  # noqa: BLE001 —— 面板不得 500
+            return f"分析失败：{exc}"
+        if not result["effective"]:
+            return f"未生效（{'；'.join(result['warnings'])}）"
+        counts = {key: len(value) for key, value in result["impacts"].items()}
+        return (
+            f"生效；影响 {counts}；unresolved={len(result['unresolved'])}；"
+            f"consistency={result['consistency'] or '无'}"
+        )
+
+    @admin.action(description="应用 ECN（写回 BomItem.part + 确认 affects 边）")
+    def apply_selected_ecn(self, request, queryset):
+        from core.ecn import EcnApplyError, apply_ecn
+
+        for ecn in queryset:
+            try:
+                result = apply_ecn(ecn, request.user)
+            except EcnApplyError as exc:
+                self.message_user(
+                    request, f"{ecn.ecn_number} 跳过：{exc}", level=messages.WARNING
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001 —— 异常以 message 呈现，不 500
+                self.message_user(
+                    request, f"{ecn.ecn_number} 应用异常：{exc}", level=messages.ERROR
+                )
+                continue
+            rewritten = (
+                "、".join(
+                    f"{r['bom_item']}:{r['from']}→{r['to']}" for r in result["rewritten"]
+                )
+                or "无"
+            )
+            self.message_user(
+                request,
+                f"{ecn.ecn_number} 已应用：新建边 {result['created_edges']}、"
+                f"补确认 {result['confirmed_edges']}、写回 {rewritten}",
+            )
 
 
 @admin.register(ECNImpact)

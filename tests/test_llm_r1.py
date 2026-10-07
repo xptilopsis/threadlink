@@ -198,4 +198,6 @@ def test_live_truncation(seeded, project):
     run = AgentRun.objects.order_by("-id").first()
     assert run.status == "failed"
     assert run.output_json["error_type"] in ("truncation", "client_parse")
-    assert "structured_mode" in run.output_json
+    assert "structured_mode" in run.output_json    # D12-R2（JSON-002 T1 补强）：truncation 非 schema 失败 → output_schema_valid=None（ADR-0008）
+    assert run.output_schema_valid is None
+    assert run.confirmed_by_id is None and run.confirmed_at is None  # 四值绑定

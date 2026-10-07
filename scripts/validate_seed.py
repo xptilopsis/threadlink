@@ -343,6 +343,35 @@ class Validator:
                     f"必须为数值，实际 {quantity!r}"
                 )
 
+    def check_trace_link_evidence(self) -> None:
+        """D12-R2（裁决 C1）：每条 ``trace_link`` 必须含**恰 1 条可核验** ``evidence``。
+
+        形态 = ``[{"type": "document", "id": "<DOC号>"}]``（SourceRef 最小形态，locator/snippet 省略）；
+        ``type ∈ ReferenceType`` 白名单且 ``id`` 可在对应集合解析（``resolve`` 等价：业务编号存在）。
+        该约束是 `chain.py` 节点 ``source_refs`` 聚合（含根）的**数据前提**（GT-TRACE-004）。
+        """
+        for row in self.rows("trace_links"):
+            evidence = row.get("evidence")
+            if not isinstance(evidence, list) or len(evidence) != 1:
+                self.fail(
+                    f"trace_links {row.get('id')}: evidence 须为长度 1 的列表，实际 {evidence!r}（C1）"
+                )
+                continue
+            ref = evidence[0]
+            if not isinstance(ref, dict):
+                self.fail(f"trace_links {row.get('id')}: evidence[0] 须为对象（C1）")
+                continue
+            rtype = ref.get("type")
+            rid = ref.get("id")
+            target = REF_TYPE_COLLECTION.get(rtype)
+            if target is None:
+                self.fail(
+                    f"trace_links {row.get('id')}: evidence.type 非法 {rtype!r}"
+                    f"（须 ∈ ReferenceType 白名单）"
+                )
+                continue
+            self.check_ref("trace_links", "evidence.id", target, rid)
+
     def check_counts(self) -> None:
         """V-01：演示数据集清点对齐 PRD AC-001（``COUNT_EQUALS`` 精确 / ``COUNT_MIN`` 下限）。"""
         for coll, expected in COUNT_EQUALS.items():
@@ -395,6 +424,7 @@ class Validator:
         self.check_source_refs()
         self.check_agent_run_status()
         self.check_ordered_by_quantity()
+        self.check_trace_link_evidence()
         self.check_counts()
         self.check_demo_requirements()
         return self.errors

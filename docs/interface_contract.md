@@ -93,8 +93,9 @@
 按样机/物料序列号反查完整追溯链：**需求 → BOM → 物料批次 → 采购单 → 测试 → ECN → Git 提交**。
 
 - **路径参数**：`sn` — 序列号，如 `SN-DEMO-001`。
-- **查询参数**（可选）：`depth`（默认 0 = 全链路）、`direction`（`forward` / `backward`，默认 `backward`）。
-- **实现（DB 版，D12-R2）**：`depth` / `direction` **已实现**——`depth=0`（缺省）= 全链；`depth=N>0` = 距根 ≤N 跳（**确裁边**时 `complete=false` 且 `missing` 增 `depth_truncated`）；`direction` 缺省 = **无向遍历**（保持全链，与 GT-006 字面默认 `backward` 的偏差见 ADR-0017），显式 `forward` / `backward` 时为有向遍历；非法/负值 `depth`、非枚举 `direction` → HTTP `400`。
+- **查询参数**（可选）：`depth`（默认 0 = 全链路）、`direction`（默认 **双向（全链）**；显式 `forward` / `backward` 按方向过滤）。
+- **实现（DB 版，D12-R2/R3）**：`depth` / `direction` **已实现**——`depth=0`（缺省）= 全链；`depth=N>0` = 距根 ≤N 跳（**确裁边**时 `complete=false` 且 `missing` 增 `depth_truncated`）；`direction` **缺省 = 双向（全链，`31/37` 不漂移）**，显式 `forward`（沿 `from→to` 顺向可达）/ `backward`（逆向可达）自 root BFS 按方向过滤（与 GT-006 字面「默认 `backward`」的偏差见 ADR-0017）；非法/负值 `depth`、非枚举 `direction` → HTTP `400`。
+- **输入规范化（D12-R3，GT-TRACE-003 边界2）**：`sn` 去首尾空白 + **大小写不敏感匹配**（`serial_number__iexact`）；**命中后以库中规范编号建链并回显 `root`**（`resolve_entity` 大小写敏感），未命中时 `root` = `strip` 原文；存储 / 唯一性 / 多命中守卫口径不变。
 - **响应**：`TraceabilityAgentOutput`（`schemas/agent_outputs.py`），语义见 §3.1。
 - **执行顺序**：先查库判定 `found`；`found=false` 时直接短路返回、不调用 LLM；仅 `found=true` 时可由 LLM 生成自然语言说明。
 - **要点**：每个 `TraceNode` 必须带 `source_refs`（引用来源，用于防幻觉）；链路缺失环节写入 `missing` 并置 `complete=false`。

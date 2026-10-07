@@ -78,16 +78,9 @@ def test_trace_003_zero_llm_and_warnings(seeded, client, monkeypatch):
     assert AgentRun.objects.count() == before
 
 
-def test_trace_003_whitespace_not_fabricated(seeded, client):
-    """GT-003 边界2（大小写/空格）：现行未做规范化 → 未命中且**不编造**节点。
-
-    ⚠️ 规范化（trim/lower）本**轮未实现**（超出 C1/C2/C3/TRACE-002 授权），登记为剩余缺口。
-    """
-
-    client.force_login(seeded)
-    data = _get(client, "/trace/serial/%20SN-DEMO-001%20/?format=json")
-    assert data["found"] is False
-    assert data["nodes"] == []
+# 注：D12-R2 曾以 `test_trace_003_whitespace_not_fabricated` 记录「未做规范化」；
+# D12-R3 已实现规范化（strip + 大小写不敏感），该缺口收口 → 用例由下方
+# `test_trace_003_normalization_*` 取代（命中变体 → 31/37；未命中变体 → found=false）。
 
 
 # --- GT-TRACE-005 断点 token（关系缺失） ------------------------------------
@@ -140,6 +133,42 @@ def test_trace_006_view_param_validation(seeded, client):
     assert client.get(f"/trace/serial/{SERIAL}/?direction=forward").status_code == 200
     assert client.get(f"/trace/serial/{SERIAL}/?direction=backward").status_code == 200
     assert client.get(f"/trace/serial/{SERIAL}/?direction=sideways").status_code == 400
+
+
+# --- GT-TRACE-006 补充：forward + depth 组合（遍历层方向过滤 → 返回层深度截断）--
+def test_trace_006_forward_with_depth(seeded, project):
+    fwd1 = build_trace_chain(project.pk, "inventory_lot", SERIAL, depth=1, direction="forward")
+    # 方向过滤（遍历层）先于深度截断（返回层）：节点深度 ≤1 且为 forward 可达子集
+    assert fwd1["found"] is True
+    assert all(node["depth"] <= 1 for node in fwd1["nodes"])
+    # forward 有向子图（≤1 跳）= 根 + 其 from→to 邻居
+    fwd_all = build_trace_chain(project.pk, "inventory_lot", SERIAL, direction="forward")
+    assert set(fwd1["nodes"][i]["node_id"] for i in range(len(fwd1["nodes"]))) <= set(
+        node["node_id"] for node in fwd_all["nodes"]
+    )
+
+
+# --- GT-TRACE-003 边界2 输入规范化（strip + 大小写不敏感） -------------------
+def test_trace_003_normalization_variants_hit_same_chain(seeded, client):
+    """小写 / 前后空格 / 混合 三种变体 → 命中同一链（31/37）。"""
+
+    client.force_login(seeded)
+    variants = ["sn-demo-001", "%20SN-DEMO-001%20", "%20Sn-Demo-001%20"]
+    for variant in variants:
+        data = _get(client, f"/trace/serial/{variant}/?format=json")
+        assert data["found"] is True, variant
+        assert data["complete"] is True, variant
+        assert len(data["nodes"]) == 31 and len(data["edges"]) == 37, variant
+
+
+def test_trace_003_normalization_not_found_unchanged(seeded, client):
+    """规范化后仍不存在 → found=false（不编造）。"""
+
+    client.force_login(seeded)
+    data = _get(client, "/trace/serial/%20sn-does-not-exist%20/?format=json")
+    assert data["found"] is False
+    assert data["nodes"] == []
+    assert data["missing"] == ["serial_not_found"]
 
 
 # --- GT-TRACE-007 批次（lot）反查 -------------------------------------------

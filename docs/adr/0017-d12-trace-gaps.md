@@ -57,3 +57,36 @@ D12-R1 盘点出 **3 条冲突（C1/C2/C3）+ 若干缺口**。用户就 **C1/C2
 | `traceability/chain.py` | `source_refs` 含根聚合、`no_*` token、`depth`/`direction`、`confirmed` 过滤 |
 | `docs/interface_contract.md` §3.2 | `depth`/`direction` 标注「v1 忽略」→「已实现」+ 截断一句话；示例刷新 |
 | 既有测试 | D4-R3 / D7-R2 中与「空 `source_refs`」相关断言更新 |
+## D12-R3 增补：`direction` 语义 + `TRACE-003` 输入规范化
+
+### 1. `direction`（GT-006；默认冲突按裁决以 31/37 优先）
+
+**GT-TRACE-006 冻原文（逐字）**：
+
+> - `depth = 0` → 全链路
+> - `depth = 2` → 距起点 ≤2 跳
+> - `direction = backward`（默认）→ 从批次回溯来源
+> - `direction = forward` → 从批次正向展开受影响对象
+> - **边界**：`depth` 为负值 → `400`；`direction` 非法值 → `400`
+
+- **默认冲突（登记、不回问）**：GT-006 字面默认 `backward`；若据此把默认设为**单向回溯**，`/trace/serial/SN-DEMO-001/` 默认链将从 **31 节点 / 37 边** 缩水 → 违反「默认不漂移」硬约束及 GT-TRACE-001/003/004 与 D4/D7 既有断言。**默认保持双向（全链，31/37）**；`direction` 仅**显式指定**时生效。
+- **最小决策（方向极性）**：`forward` = 沿 `from→to` 顺向可达；`backward` = 逆向可达；均自 root BFS，受 `MAX_DEPTH` 与 `confirmed` 过滤（有向子图）。
+- **与 `depth` 组合**：方向过滤在**遍历层**、深度截断在**返回层**（先按方向 BFS，再按 `depth` 裁剪节点/边）。
+- 非法/负值 `depth`、非枚举 `direction` → HTTP `400`（视图层）。
+
+### 2. `TRACE-003` 输入规范化（边界2 收口）
+
+**GT-TRACE-003 边界2 冻原文（逐字）**：
+
+> **边界 2**：大小写/空格差异（`" sn-demo-001 "`）→ 规范化后按存在/不存在分别处理，不误报编造
+
+- 规范化口径：`sn.strip()` + 匹配用 `serial_number__iexact`（大小写不敏感）；**命中后以库中规范编号**（`lots[0].serial_number`）**建链并回显 `root`**（因 `resolve_entity` 为大小写敏感精确匹配）；未命中时 `root` = `strip` 原文；存储 / 唯一性 / 多命中守卫（409）口径不变。
+- 实施位置：`traceability/views.py::serial_trace`（**查询入口层**）。`agents/traceability.py` 的 run 入口属 D12 禁改边界（`agents/`）→ 规范化**未**覆盖该入口，登记为剩余缺口（去向 D13/D14）。
+
+### 3. 影响面增补
+
+| 文件 | 变更 |
+| --- | --- |
+| `traceability/views.py` | 输入 `strip` + `__iexact` 匹配；docstring |
+| `docs/interface_contract.md` §3.2 | `direction` 默认「`backward`」→「双向（全链）＋显式按方向过滤」；输入规范化注记 |
+| `tests/golden/test_trace_query.py` | `forward`+`depth` 组合、规范化变体（小写 / 空格 / 混合）→ 31/37 |

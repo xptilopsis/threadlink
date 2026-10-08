@@ -17,8 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from agents.admin import bom_selection_criteria_view
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('traceability.urls')),
     path('', include('agents.urls')),
+    path('agents/bom-selection/form/', bom_selection_criteria_view, name='bom_selection_criteria'),
 ]

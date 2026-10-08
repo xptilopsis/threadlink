@@ -31,6 +31,11 @@ class Command(BaseCommand):
         parser.add_argument("--cost-max", type=Decimal, default=None)
         parser.add_argument("--model", default=None)
         parser.add_argument("--temperature", type=float, default=0.2)
+        parser.add_argument(
+            "--full",
+            action="store_true",
+            help="输出完整 rationale（默认截断 80 字符并以 … 标注）",
+        )
 
     def handle(self, *args, **options):
         project = Project.objects.filter(code=options["project"]).first()
@@ -58,8 +63,14 @@ class Command(BaseCommand):
             f"candidates={summary.get('candidates')} recommended={summary.get('recommended')}"
         )
         for candidate in (summary.get("output") or {}).get("candidates", []):
+            rationale = candidate["rationale"]
+            if options["full"]:
+                shown = rationale
+            else:
+                # D13-R1：截断处补 … 明示「非全文」（完整值在 output_json）
+                shown = rationale[:80] + ("…" if len(rationale) > 80 else "")
             self.stdout.write(
                 f"  {candidate['part_number']} score={candidate['score']} "
                 f"price={candidate['unit_price']} lead={candidate['lead_time_days']} "
-                f"| {candidate['rationale'][:80]}"
+                f"| {shown}"
             )

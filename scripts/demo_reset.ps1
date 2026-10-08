@@ -29,8 +29,12 @@
   演示超管密码；默认取环境变量 DEMO_ADMIN_PASSWORD，再缺省为 demo-pass-2026。
 
 .EXAMPLE
-  powershell -File scripts/demo_reset.ps1
-  powershell -File scripts/demo_reset.ps1 -SkipLive
+  # 推荐：使用启动器（内置 PowerShell 全路径回退，兼容 powershell 不在 PATH）
+  start_threadlink_demo_reset.bat
+  start_threadlink_demo_reset.bat -SkipLive
+
+  # 或手工调用（powershell 不在 PATH 时用全路径）
+  %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\demo_reset.ps1 -SkipLive
 #>
 [CmdletBinding()]
 param(

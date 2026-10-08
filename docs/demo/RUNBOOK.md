@@ -16,7 +16,7 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 演示前 | 运行 `powershell -File scripts/demo_reset.ps1`（需 LLM 可达）→ 库回到终态 |
+| 演示前 | 运行 `start_threadlink_demo_reset.bat`（或 `scripts/demo_reset.ps1`，需 LLM 可达）→ 库回到终态 |
 | 演示中 | 生成线与决策线**分离**：生成线现场产生新 run；决策线固定作用于 runs 6/7/8 |
 | 演示后 | **再运行一次恢复脚本**（生成线/决策线/ECN 应用均已写库）；落档文件保留入库 |
 | 段序 | 只读在前（段 1、5、6、7）；ECN 应用 = 倒数第二段（段 8）；决策线 = 段 9 |
@@ -44,9 +44,12 @@
 
 ### 2.1 一键恢复
 
-```powershell
-# 从仓库根执行；需 .data/demo-repo 存在、LLM 可达
-powershell -ExecutionPolicy Bypass -File scripts/demo_reset.ps1
+```cmd
+:: 推荐：双击或命令行运行启动器（内置 PowerShell 全路径回退，兼容 powershell 不在 PATH）
+start_threadlink_demo_reset.bat
+
+:: 或手工调用（从仓库根；需 .data/demo-repo 存在、LLM 可达）
+%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\demo_reset.ps1
 ```
 
 序列（失败即中止，退出码非 0）：`make_demo_repo --check` → 删除 `db.sqlite3` → `migrate` →
@@ -232,7 +235,7 @@ powershell -ExecutionPolicy Bypass -File scripts/demo_reset.ps1
 
 ### 4.4 收尾
 
-1. （若需要复现）运行 `powershell -File scripts/demo_reset.ps1` 回到终态。
+1. （若需要复现）运行 `start_threadlink_demo_reset.bat`（或 `scripts/demo_reset.ps1`）回到终态。
 2. `documents/uploads/` 的演示上传产物由恢复脚本清理；`documents/` 根下的种子文件（DOC-001/002）不受影响。
 
 ---

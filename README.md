@@ -46,9 +46,23 @@
 
 ## 本地开发与启动脚本
 
-项目提供 `start_threadlink_admin.bat`，双击即可一键启动开发环境。
+项目提供 4 个 Windows 批处理启动器，双击或命令行运行即可（均 `chcp 65001` UTF-8、自动进入项目根目录）：
 
-### 功能
+| 脚本 | 用途 | 依赖 |
+| --- | --- | --- |
+| `start_threadlink_admin.bat` | 一键启动 Django 开发服务器（清理 `8000` 僵尸进程 + 看门狗 + 自动打开 admin） | `.venv`、Microsoft Edge |
+| `start_threadlink_venv.bat` | 打开**已激活 `.venv`** 的交互式 cmd（提示符显示 `(.venv)`），可直接 `python manage.py ...` | `.venv` |
+| `start_threadlink_shell.bat` | 打开**普通** cmd（仅切到项目根，**不激活** venv），用于需要系统 `python` 或纯 cmd 操作的场合 | 无 |
+| `start_threadlink_demo_reset.bat` | 演示前一键重建演示库到终态（调用 `scripts/demo_reset.ps1`） | `.venv`、LLM 可达 |
+
+> **`powershell` 不在 PATH 时**：`start_threadlink_demo_reset.bat` 已内置
+> `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` 全路径回退；若需手工调用，用
+> `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\demo_reset.ps1`，
+> 或先打开 PowerShell 窗口再执行 `.\scripts\demo_reset.ps1`。
+
+### start_threadlink_admin.bat —— 开发服务器
+
+功能：
 
 1. **激活虚拟环境**：调用 `.venv\Scripts\activate.bat`。
 2. **启动前清理僵尸进程**：在打开浏览器之前，结束占用 `8000` 端口的旧 `python.exe`。
@@ -84,24 +98,14 @@ start_threadlink_admin.bat
 ```cmd
 netstat -ano | findstr ":8000"
 ```
-## 虚拟环境 Shell
+### start_threadlink_venv.bat —— 虚拟环境 Shell
 
-项目提供 `start_threadlink_shell.bat`，双击后打开一个已进入项目虚拟环境的 cmd 窗口。
+在项目根目录打开一个**已激活 `.venv`** 的交互式 cmd：调用 `.venv\Scripts\activate.bat`，再以 `cmd /k` 保持窗口；提示符前显示 `(.venv)`，可直接执行 `python manage.py ...`；输入 `exit` 关闭窗口。
 
-### 功能
-
-1. **切换目录**：进入项目根目录。
-2. **激活虚拟环境**：调用 `.venv\Scripts\activate.bat`。
-3. **保持窗口打开**：以 `cmd /k` 启动交互式 shell，提示符前显示 `(.venv)`，可直接执行 `python manage.py ...`；输入 `exit` 关闭窗口。
-
-### 依赖
-
-- 已创建虚拟环境 `.venv`（`python -m venv .venv`）。
-
-### 使用
+使用：
 
 ```cmd
-start_threadlink_shell.bat
+start_threadlink_venv.bat
 ```
 
 手动等价操作：
@@ -109,6 +113,37 @@ start_threadlink_shell.bat
 ```cmd
 cd /d C:\Users\Lenovo\Desktop\Threadlink\threadlink
 .venv\Scripts\activate.bat
+```
+
+依赖：已创建虚拟环境 `.venv`（`python -m venv .venv`）。
+
+### start_threadlink_shell.bat —— 普通 Shell
+
+在项目根目录打开一个**未激活虚拟环境**的普通 cmd（仅 `cd` 到项目根 + `cmd /k`）。适合需要系统 `python`、或不想让 `.venv` 抢先解析 `python` 的场合。
+
+使用：
+
+```cmd
+start_threadlink_shell.bat
+```
+
+> 与 `start_threadlink_venv.bat` 的区别：本脚本**不**调用 `activate.bat`，提示符不带 `(.venv)`，`python` 解析为系统解释器。
+
+### start_threadlink_demo_reset.bat —— 演示库恢复
+
+演示前一键把演示库重建到终态（干净种子 + `bom_selection` / `traceability` / `requirement` 各 1 条 `needs_review`，run id 恒为 6/7/8）。内部调用 `scripts/demo_reset.ps1`，并内置 PowerShell **全路径回退**，兼容 `powershell` 不在 PATH 的环境。
+
+使用：
+
+```cmd
+start_threadlink_demo_reset.bat             :: 完整恢复（三类真实调用，需 LLM 可达）
+start_threadlink_demo_reset.bat -SkipLive   :: 离线自检（跳过真实 LLM 调用）
+```
+
+参数会原样透传给 `scripts/demo_reset.ps1`（脚本实现与断言见 `docs/demo/RUNBOOK.md`）。手工调用（不用启动器）等价于：
+
+```cmd
+%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\demo_reset.ps1
 ```
 ## 种子数据校验
 

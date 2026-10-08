@@ -3,20 +3,11 @@ chcp 65001 >nul
 title Threadlink Venv Shell
 cd /d C:\Users\Lenovo\Desktop\Threadlink\threadlink
 
-if not exist ".venv\Scripts\activate.bat" (
-    echo [WARN] 未找到 .venv，请先运行: python -m venv .venv
-    pause
-    exit /b 1
-)
-
-call .venv\Scripts\activate.bat
-
 echo ============================================
-echo   Threadlink 虚拟环境 Shell
+echo   Threadlink Shell
 echo ============================================
-echo [OK] 已激活虚拟环境 .venv
+echo [OK] 已激活cmd
 echo 当前目录: %CD%
-echo 提示符前应显示 (.venv)
 echo 输入 exit 关闭本窗口
 echo.
 

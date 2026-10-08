@@ -95,8 +95,8 @@ Invoke-Step "6/8 sync_git_repo" { & $Python manage.py sync_git_repo }
 if (-not $SkipLive) {
     Invoke-Step "7/8 bom_selection → run 6" { & $Python manage.py run_bom_selection --project DEMO-GW }
     Invoke-Step "7/8 traceability → run 7" { & $Python manage.py run_traceability SN-DEMO-001 }
-    $requirementCode = 'from core.models import Project, Document, User; from agents.requirement import run_requirement_agent; p = Project.objects.get(code="DEMO-GW"); d = Document.objects.get(doc_no="DOC-001"); u = User.objects.get(username="admin"); s = run_requirement_agent(p, d, u); print("requirement cards=", s.get("cards"), "run=", s.get("agent_run_id"))'
-    Invoke-Step "7/8 requirement → run 8" { & $Python manage.py shell -c $requirementCode }
+    # requirement Agent 无 management command；用独立脚本调用（避免 `shell -c` 内联引号被 PowerShell 拆散）
+    Invoke-Step "7/8 requirement → run 8" { & $Python scripts/run_requirement_demo.py --project DEMO-GW --document DOC-001 --username admin }
 }
 
 if ($SkipLive) {

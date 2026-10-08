@@ -1,6 +1,16 @@
 @echo off
 chcp 65001 >nul
 
+:: ============================================================================
+:: start_threadlink_admin.bat  --  D13-R1
+:: Purpose : one-click Django dev server for the demo
+::             1) activate .venv            2) kill zombie python on port 8000
+::             3) start a watchdog           4) python manage.py runserver --noreload
+::             5) auto-open Edge at /admin/  6) cleanup on exit
+:: Usage   : start_threadlink_admin.bat
+:: Deps    : .venv created ; Microsoft Edge installed
+:: ============================================================================
+
 :: 看门狗分支：被 start 以 --watchdog <PID> 调用时进入，不执行主流程
 if "%~1"=="--watchdog" goto watchdog
 

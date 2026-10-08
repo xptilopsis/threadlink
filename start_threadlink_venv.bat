@@ -1,5 +1,14 @@
 @echo off
 chcp 65001 >nul
+
+:: ============================================================================
+:: start_threadlink_venv.bat  --  D13-R1
+:: Purpose : open an interactive cmd with the project venv ACTIVE
+::           calls .venv\Scripts\activate.bat, then cmd /k
+:: Usage   : start_threadlink_venv.bat
+:: Result  : prompt shows (.venv); `python` resolves to the venv interpreter
+:: ============================================================================
+
 title Threadlink Venv Shell
 cd /d C:\Users\Lenovo\Desktop\Threadlink\threadlink
 

@@ -145,6 +145,19 @@ start_threadlink_demo_reset.bat -SkipLive   :: 离线自检（跳过真实 LLM �
 ```cmd
 %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\demo_reset.ps1
 ```
+
+### 故障排查（启动器与演示库恢复）
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `'powershell' is not recognized as an internal or external command` | 当前 cmd 会话的 `PATH` 中没有 `powershell` | 用 `start_threadlink_demo_reset.bat`（内置全路径回退），或全路径 `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -ExecutionPolicy Bypass -File scripts\demo_reset.ps1`，或先打开 PowerShell 窗口再 `.\scripts\demo_reset.ps1` |
+| 启动器 banner 出现 `'xxx' is not recognized ...` | cmd 对非 ASCII `echo` 文本与代码页组合的解析异常 | 启动器 banner 已改为**纯 ASCII**；中文用途说明见本节与各 `.bat` 顶部注释 |
+| 启动器窗口一闪而过 | 执行失败或立即结束 | 用 `start_threadlink_shell.bat` 打开 cmd 后手动运行该 `.bat`，观察 `[OK]` / `[FAIL]` 与退出码 |
+| 演示库未回到终态 | `demo_reset.ps1` 中途失败（LLM 不可达 / Git 白名单 / 迁移） | 按窗口内 `==>` 步骤与错误信息排错；仅做离线 bootstrap 时加 `-SkipLive` |
+
+> **`requirement` Agent 无 management command**：其命令行等价入口为
+> `.venv\Scripts\python.exe scripts\run_requirement_demo.py`（可加 `--project DEMO-GW --document DOC-001 --username admin`）；
+> `scripts/demo_reset.ps1` 第 7 步（requirement → run 8）即调用该脚本。
 ## 种子数据校验
 
 `scripts/validate_seed.py` 对 `fixtures/demo_seed.json` 做**数据契约校验**（业务编号唯一性、`id == 业务编号字段` 的 R8 自洽、引用闭包、多态端点白名单、`AgentRun.status` 四值规则、`User.role` 职能枚举）。校验不依赖 Django / 数据库 / 第三方库，退出码 `0` 通过、`1` 失败。
@@ -241,6 +254,12 @@ Requirement Agent 从来源文档抽取需求卡，经引用核验后进入 `nee
 1. 打开 `/admin/core/document/`，勾选 **DOC-001（客户需求邮件）** → 动作「运行 Requirement Agent（生成需求卡）」→ 消息「DOC-001：N 张卡片进入待确认」。
 2. 打开 `/admin/agents/agentrun/` 只读队列（过滤 `status=needs_review`），查看 `output_summary`（卡片标题）与详情 `output_json`。
 3. 引用核验失败时该 `AgentRun.status=failed`、`invalid_references` 落库，**不进队列**。
+
+命令行等价入口（`requirement` 无 management command）：
+
+```cmd
+.venv\Scripts\python.exe scripts\run_requirement_demo.py --project DEMO-GW --document DOC-001 --username admin
+```
 
 契约端点（程序化触发；响应 `{agent_run, output}`）：
 

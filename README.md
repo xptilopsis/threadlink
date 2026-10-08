@@ -2,6 +2,53 @@
 
 面向中小机电研发团队的单租户轻量研发追溯平台：以 TraceLink 追溯元数据为主线管理需求、BOM、测试、库存、采购与 ECN，只读关联 Git 与文件，并用可审计的 AI 智能体辅助物料选型与全链路追溯。
 
+## 快速开始（Windows）
+
+> 新克隆者最短路径；各分区细节见下文对应章节。
+
+1. **前置**：Python 3.13、Git；PowerShell（或下文 `.bat` 启动器）。
+2. **克隆 + 虚拟环境 + 依赖**：
+
+   ```cmd
+   git clone <repo-url> threadlink && cd threadlink
+   python -m venv .venv
+   .venv\Scripts\python.exe -m pip install -r requirements\dev.txt
+   ```
+
+3. **配置 `.env`**：`copy .env.example .env`，至少填 `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL`（全量键见「环境变量」节）。
+4. **建库 + 种子 + 演示仓库**：
+
+   ```cmd
+   .venv\Scripts\python.exe manage.py migrate
+   .venv\Scripts\python.exe scripts\make_demo_repo.py          :: 生成确定性演示 Git 仓库
+   .venv\Scripts\python.exe manage.py createsuperuser          :: 用户名填 admin（供演示登录）
+   .venv\Scripts\python.exe manage.py load_demo_seed --flush
+   set GIT_READONLY_ROOTS=.data
+   .venv\Scripts\python.exe manage.py sync_git_repo
+   ```
+
+5. **启动**：`start_threadlink_admin.bat`（推荐，自动打开 admin）或 `.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000`。
+6. **登录**：http://127.0.0.1:8000/admin/ （`admin` / 你设置的密码）。
+
+> **一键演示**：熟悉后可直接双击 `start_threadlink_demo_reset.bat`，确定性重建演示库到终态（含三类真实调用，需 LLM 可达）。
+
+## 环境变量（`.env`）
+
+完整键位以 `.env.example` 为准：
+
+| 键 | 说明 |
+| --- | --- |
+| `DJANGO_SECRET_KEY` / `DJANGO_DEBUG` / `DJANGO_ALLOWED_HOSTS` | Django 基础配置 |
+| `DATABASE_URL` | 数据库（开发 SQLite；目标 PostgreSQL） |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | LLM 端点与模型（key 与 base 须同源） |
+| `LLM_BACKEND` | `openai`（默认）或 `fake`（离线回放，**不落 AgentRun**） |
+| `LLM_TIMEOUT` / `LLM_MAX_RETRIES` | 超时 / 重试上限 |
+| `LLM_STRUCTURED_MODE` | `auto`（默认，`json_schema`→`json_object` 自动降级）/ `json_schema` / `json_object` |
+| `LLM_EXTRA_BODY` | 通用 provider 参数（JSON；DeepSeek 推荐 `{"thinking": {"type": "disabled"}}`） |
+| `VECTOR_STORE` / `CHROMA_DIR` | 向量库预留配置 |
+| `GIT_READONLY_ROOTS` | Git 只读白名单（`sync_git_repo` 用；Windows `;` 分隔，相对 `BASE_DIR`） |
+| `GIT_ALLOW_WRITE` | 默认 `0`（只读；勿改） |
+
 ## Must（必须做）
 
 1. 单租户登录 + 项目管理。
@@ -298,6 +345,9 @@ curl -X POST http://127.0.0.1:8000/agents/requirement/run/ ^
 
 5 项 criteria 可覆盖（`--voltage-min/--voltage-max/--current-min/--temp-min/--temp-max/--ip-min`；`--cost-max` 默认不启用）。输出 run id + 候选摘要（`part_number / score / price / lead`）。
 
+- `--full`：输出**完整** `rationale`（默认截断 80 字符并以 `…` 标注；完整文本始终存于 `AgentRun.output_json`）。
+- **criteria 表单（UI 入口，D13）**：浏览器打开 `/agents/bom-selection/form/`，填电压/电流/温度/IP/`cost_max`（可选）→ 提交 → 重定向到新 `AgentRun` 详情（登录必填）。
+
 **契约端点**（响应 `{agent_run, output}`）：
 
 ```cmd
@@ -366,3 +416,60 @@ curl -X POST http://127.0.0.1:8000/agents/traceability/run/ ^
 ```
 
 前置门：状态 ∈ `{approved, implemented}` 且 `effective_date ≤ 当日`（`approved` + 空日期 → `missing_effective_date`）。事务内：确保 `ECN→目标` `affects` 边（缺 → 建、未确认 → 补确认、已确认 → 不动）+ 写回受影响 `BomItem.part ← 替代料`（`replaces` 目标）。二次应用为 **no-op**（幂等）。亦可经 `ECNAdmin` action「应用 ECN（写回 BomItem.part + 确认 affects 边）」。
+## 命令清单
+
+**演示（Agent / 业务动作）**
+
+```cmd
+.venv\Scripts\python.exe manage.py run_bom_selection --project DEMO-GW        :: 选型（--full 输出完整 rationale）
+.venv\Scripts\python.exe manage.py run_traceability SN-DEMO-001               :: 追溯链解释
+.venv\Scripts\python.exe scripts\run_requirement_demo.py --document DOC-001   :: 需求卡（requirement 无 command）
+```
+
+- UI 入口：`/agents/bom-selection/form/`（criteria 表单）、`/admin/core/document/`（Document action「运行 Requirement Agent」）、`/admin/agents/agentrun/`（approve / reject）。
+
+**运维 / 计算（确定性、零 LLM）**
+
+```cmd
+.venv\Scripts\python.exe manage.py bom_expand BOM-001 --hierarchy             :: BOM 多级展开
+.venv\Scripts\python.exe manage.py kitting_check WO-001                       :: 工单齐套
+.venv\Scripts\python.exe manage.py ecn_impact ECN-001                         :: ECN 影响投影（只读）
+.venv\Scripts\python.exe manage.py ecn_apply ECN-001                          :: ECN 应用（写）
+.venv\Scripts\python.exe manage.py sync_git_repo                              :: Git 同步（需 GIT_READONLY_ROOTS）
+start_threadlink_demo_reset.bat                                               :: 演示库确定性重建
+```
+
+**验证**
+
+```cmd
+.venv\Scripts\python.exe scripts\validate_seed.py                            :: 种子契约校验
+.venv\Scripts\python.exe scripts\make_demo_repo.py --check                   :: 演示仓库确定性自检
+.venv\Scripts\python.exe -m pytest -q -m "not live"                          :: 非 live 全量
+.venv\Scripts\python.exe -m pytest -q                                        :: 全量（含 live，真打）
+.venv\Scripts\python.exe scripts\demo_terminal_assert.py --expect full       :: 演示库终态断言
+```
+
+## 演示
+
+15 分钟分 9 段的完整演示脚本（含各段期望值、决策线、降级预案、禁用清单）见 **`docs/demo/RUNBOOK.md`**；演示前用 `start_threadlink_demo_reset.bat` 重建终态；交付证据见 `docs/qa/2026-10-08-d13-r1-evidence.md`。
+
+## 测试
+
+- 分层（ADR-0008）：**live**（真实调用，默认执行）/ **transport**（HTTP 边界 mock）/ **craft**（构造数据）/ **fake**（`LLM_BACKEND=fake` 离线回放，**不落 AgentRun**）。
+- 断网 / 无 key 逃生：`.venv\Scripts\python.exe -m pytest -q -m "not live"`。
+- 覆盖：GT **38/38**（`docs/qa/2026-10-07-d12-gt-coverage-matrix.md`）。
+
+## 文档索引
+
+| 类别 | 位置 |
+| --- | --- |
+| 需求 / 范围 | `docs/PRD.md`、`docs/demonstration_project_requirements.md` |
+| 契约 / 数据字典 | `docs/interface_contract.md`、`docs/data_dictionary.md` |
+| 数据模型 / ER | `docs/er_diagram.md` |
+| 架构图 | `docs/architecture/README.md` |
+| 决策记录（ADR） | `docs/adr/0001…0017` |
+| 黄金测试 | `docs/golden_tests.md` |
+| 收口 / 覆盖矩阵 | `docs/qa/*` |
+| 演示 runbook | `docs/demo/RUNBOOK.md` |
+| 报告骨架 | `docs/report/REPORT.md` |
+| 延后台账 | `docs/DEFERRED.md` |

@@ -1,0 +1,21 @@
+From: 客户采购部 <procurement@customer.example.com>
+To: 研发部 <rd@threadlink.example.com>
+Subject: 便携式工业网关样机需求（2026-01-05）
+Date: Mon, 05 Jan 2026 09:00:00 +0800
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+您好，
+
+我们需要一款便携式工业网关样机，请按以下要求评估：
+
+1. 供电：9-36V DC 宽压输入，额定电流不低于 5A；
+2. 工作温度：-40 ~ 85 °C；
+3. 防护等级：IP65；
+4. BOM 成本：控制在 800 元人民币以内；
+5. 通信：需具备工业以太网接口。
+
+请据此给出方案与 BOM 建议。
+
+此致
+客户采购部

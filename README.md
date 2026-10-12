@@ -115,7 +115,7 @@
 2. **启动前清理僵尸进程**：在打开浏览器之前，结束占用 `8000` 端口的旧 `python.exe`。
 3. **启动独立看门狗**：另起一个独立进程，基于主窗口 PID 轮询；主窗口关闭后自动杀掉占用 `8000` 的残留进程。
 4. **启动 Django 开发服务器**：`python manage.py runserver 127.0.0.1:8000 --noreload`（`--noreload` 关闭自动重载，减少 Windows 上关窗后残留的子进程）。
-5. **自动打开管理后台**：服务器就绪后延迟 5 秒，用 Microsoft Edge 打开 `http://127.0.0.1:8000/admin/`。
+5. **自动打开管理后台**：服务器就绪后延迟 2 秒，用 Microsoft Edge 打开 `http://127.0.0.1:8000/admin/`。
 6. **停止后清理**：`Ctrl+C` 停止服务后再清理一次僵尸进程。
 
 ### 僵尸进程清理机制
@@ -201,6 +201,10 @@ start_threadlink_demo_reset.bat -SkipLive   :: 离线自检（跳过真实 LLM �
 | 启动器 banner 出现 `'xxx' is not recognized ...` | cmd 对非 ASCII `echo` 文本与代码页组合的解析异常 | 启动器 banner 已改为**纯 ASCII**；中文用途说明见本节与各 `.bat` 顶部注释 |
 | 启动器窗口一闪而过 | 执行失败或立即结束 | 用 `start_threadlink_shell.bat` 打开 cmd 后手动运行该 `.bat`，观察 `[OK]` / `[FAIL]` 与退出码 |
 | 演示库未回到终态 | `demo_reset.ps1` 中途失败（LLM 不可达 / Git 白名单 / 迁移） | 按窗口内 `==>` 步骤与错误信息排错；仅做离线 bootstrap 时加 `-SkipLive` |
+| 启动器输出出现 `'ttp:' / 'xxx' is not recognized ...` 噪声 | `.bat` 内含**非 ASCII `echo`** 文本，被 cmd 默认代码页（如 GBK）按多字节误读，部分字节对解析出 `|` 等而拆断命令 | 四个启动器控制台文本**全部（`admin` / `demo_reset` / `venv` / `shell`）已改为纯 ASCII**，根治该类噪声 |
+| `start_threadlink_admin.bat` 卡在 `[1/4] 清理启动前的僵尸进程` 不动 | 旧实现用 `for /f ('netstat -ano ...')` 捕获；`netstat -ano` 在部分主机（网络栈异常 / 连接过多）**长时间挂起** | 已改用 **PowerShell 全路径 + `Get-NetTCPConnection`** 清理（不再依赖 netstat）；若仍卡，手动清：`%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -State Listen -EA SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -EA SilentlyContinue }"` |
+| 服务端启动耗时长（稳定十几秒才就绪） | ① `runserver` 默认先跑 Django **system checks**（实测 `manage.py check` ≈ **5.2 s**）；② 启动器在 `runserver` 前有**两次同步 PowerShell 冷启动**（实测 `kill` 3.0 s / `parent` 1.5 s） | 已加 **`runserver --skip-checks`**（跳过 checks）+ 合并为**单次 `admin_win.ps1 -Action prepare`**（清端口与取 PID 一次完成，省一次 PowerShell 冷启动）；实测 `runserver --noreload --skip-checks` 就绪 **691 ms**（沙箱）。手动启动请自带 `--skip-checks` |
+| `/admin/` 页面加载偏长且耗时不稳定 | 实测**服务端渲染仅 ~7 ms 且稳定**；抖动来自 **admin 的 7 个静态资源由 `runserver` 逐文件实时 serve** 的冷读（冷 ~41 ms / 热 ~17 ms；Windows 文件 I/O + 杀毒实时扫描 + 首次 `mimetypes` 初始化）+ **进程冷启动**，均非业务逻辑 | 启动器已：`runserver --noreload --skip-checks` + 开浏览器前**预热**（`scripts/admin_win.ps1 -Action open` 先请求 `/admin/login/` 与 1 个静态文件再开 Edge）；另建议把项目目录 / `.venv` / Python 安装目录加入 **Windows Defender 排除**、避免系统代理作用于 `127.0.0.1`、勿勾选浏览器 DevTools 的 *Disable cache* |
 
 > **`requirement` Agent 无 management command**：其命令行等价入口为
 > `.venv\Scripts\python.exe scripts\run_requirement_demo.py`（可加 `--project DEMO-GW --document DOC-001 --username admin`）；

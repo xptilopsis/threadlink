@@ -30,11 +30,11 @@
 | --- | --- | --- | --- |
 | 1 | 状态速览 · 审计队列 | AC-001 / AC-009（D11 S7） | `URL /admin/agents/agentrun/` |
 | 2 | **S1 客户邮件 → 需求卡** | AC-002 / AC-003（D11 S1） | Admin Documents 上传 + 「运行 Requirement Agent」 action |
-| 3 | **S2 BOM 选型** | AC-004（D11 S2） | `URL /agents/bom-selection/form/`（criteria 表单，D13 新增） |
-| 4 | **S3 追溯链** | AC-005（D11 S3） | `URL /trace/serial/SN-DEMO-001/` + `manage.py run_traceability` |
-| 5 | **S5 工单齐套** | AC-007（D11 S5） | `manage.py kitting_check WO-001` + WorkOrder 面板 |
+| 3 | **S2 BOM 选型** | AC-004（D11 S2） | AgentRun 页按钮「打开 BOM 选型表单」→ `/agents/bom-selection/form/`（criteria 表单，D13 新增） |
+| 4 | **S3 追溯链** | AC-005（D11 S3） | AgentRun 页按钮「打开追溯链（SN-DEMO-001）」→ `/trace/serial/SN-DEMO-001/` + `manage.py run_traceability` |
+| 5 | **S5 工单齐套** | AC-007（D11 S5） | Admin → WorkOrders → WO-001 详情「Kitting summary (read-only)」面板（网页内完成） |
 | 6 | **S6 只读约束** | AC-008（D11 S6） | Admin Git repos/commits + `scripts/make_demo_repo.py --check` |
-| 7 | **S4 ECN 影响投影（只读）** | AC-006（D11 S4） | `manage.py ecn_impact ECN-001` + ECN 面板「影响投影」 |
+| 7 | **S4 ECN 影响投影（只读）** | AC-006（D11 S4） | Admin → ECNs → ECN-001 详情「Impact projection (read-only)」面板（网页内完成） |
 | 8 | **S4 ECN 应用（写）** | AC-006（D11 S4） | Admin ECNs action「应用 ECN」（`ecn_apply`） |
 | 9 | **S7 审计 + 决策线** | AC-003 / AC-009（D11 S7） | Admin Agent runs action「批准/拒绝」（runs 6/8/7） |
 
@@ -75,6 +75,39 @@ start_threadlink_demo_reset.bat
 > `[恢复脚本]` 本批沙箱 `-SkipLive` 幂等验证：两次运行输出**逐字节一致**，终态断言 `[OK]`；
 > `sync_git_repo = added=0 updated=0 missing=0`；`load_demo_seed` 22 集合计数与上表一致。
 
+### 2.3 启动开发服务器（演示前，约 1 min）
+
+> 属**演示前准备**，**不计入 15 分钟正式计时**；服务器须在段 1 之前就绪。
+
+```cmd
+:: 推荐：双击或在 cmd 运行启动器（自动清 8000 端口 + 看门狗 + 打开 Edge）
+start_threadlink_admin.bat
+
+:: 或直接前台运行（venv 已激活的窗口；跳过启动器的清理逻辑）
+.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
+```
+
+- **就绪判据**：窗口出现 `Starting development server at http://127.0.0.1:8000/`，Edge 自动打开
+  `http://127.0.0.1:8000/admin/`；`admin` / `demo-pass-2026` 可登录。
+
+**⚠️ 卡点：`start_threadlink_admin.bat` 停在 `[1/4] 清理启动前的僵尸进程`（D13-R3 已修复）**
+
+- **现象**：停在 `[1/4]` 不动，长时间不进入 `[2/4]`。
+- **根因**：旧实现用 `for /f ('netstat -ano ...')` 捕获输出；`netstat -ano` 在部分主机（网络栈异常 / 连接过多）**长时间挂起**，`for /f` 随之无限等待。
+- **修复（D13-R3）**：`kill_port_8000`（启动前 + `Ctrl+C` 后）与看门狗清理改用 **PowerShell 全路径 + `Get-NetTCPConnection`**，不再调用 `netstat`；`SELF_PID` 获取亦改全路径 PowerShell。
+- **应急绕过（旧版本仍卡住 / 需要立刻继续）**：
+
+  ```cmd
+  :: 1) 手动清端口（PowerShell 全路径；用 ForEach-Object 避免 cmd 下的 % 解析问题）
+  %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -State Listen -EA SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -EA SilentlyContinue }"
+
+  :: 2) 再直接前台运行（不依赖启动器的端口清理）
+  .venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
+  ```
+- **相关文档**：README「故障排查（启动器与演示库恢复）」表含同一现象与处理。
+- **提示文本**：启动器控制台输出为**纯 ASCII**——`.bat` 含非 ASCII `echo` 时会被 cmd 默认代码页误读并产生
+  `'ttp:' / 'xxx' is not recognized` 噪声（D13-R3 已把**四个启动器** `admin` / `demo_reset` / `venv` / `shell` 文本全部 ASCII 化）。
+
 ---
 
 ## 3. 15 分钟分段脚本
@@ -101,7 +134,7 @@ start_threadlink_demo_reset.bat
   - 上传 detail：`checksum = 708d5f20e797aefecd600b4129ce1202b955ca06daf8e164d15c7c5309dca119`、
     `size = 628`（字节）、`mime_type`（浏览器上报，典型 `message/rfc822`）、`is_readonly = True`；
   - 任务消息「…：**5 张卡片**进入待确认」；AgentRun 队列新增 1 条 `requirement` `needs_review`（现场新 run，id 9）。
-  - 5 张卡标题：宽压直流供电 / 宽温工作范围 / IP65 防护等级 / BOM 成本上限 / 工业以太网接口。
+  - 5 张卡（**数量=5** + 每卡来源引用非空）；以下标题为**示例措辞，非精确预期**（LLM 非确定性）：宽压直流供电 / 宽温工作范围 / IP65 防护等级 / BOM 成本上限 / 工业以太网接口。
 - **降级**（时间紧或 LLM 不可达）：**直接展示预跑 run 8**（同 5 张卡）+ 口述「邮件见种子 DOC-001」。
 - **时间预算**：2 min（上传 0.5 + Agent 1.5）。
 - **踩点**：邮件 5 条诉求 ↔ 5 张卡的对应；每张卡 `source_refs` 指向该 Document（AC-002/AC-003）。
@@ -111,7 +144,7 @@ start_threadlink_demo_reset.bat
 ### 段 3 — S2 BOM 选型 criteria 表单（2 min，生成线）
 
 - **目标**：确定性引擎打分 + LLM 只写解释文案。
-- **操作**：浏览器打开 `http://127.0.0.1:8000/agents/bom-selection/form/` → 表单已预填演示 criteria
+- **操作**：在 Admin 内导航进入（**无需手敲地址**）：`/admin/` 首页 **「演示快捷入口 → 打开 BOM 选型表单（criteria）」**（或 `/admin/agents/agentrun/` 列表页顶部同名按钮）→ 表单已预填演示 criteria
   （9/36 V、≥5 A、−40~85 °C、IP65；`cost_max` 留空）→ 点「**运行选型**」→ 自动重定向到新 AgentRun detail。
 - **期望输出**（`candidates=3`、`recommended=PART-002`）：
   | 候选 | score | unit_price | lead_time_days | replaces_part_id |
@@ -129,7 +162,7 @@ start_threadlink_demo_reset.bat
 
 - **目标**：从成品序列号反向追溯到需求/文档/Git。
 - **操作**：
-  1. 浏览器打开 `http://127.0.0.1:8000/trace/serial/SN-DEMO-001/`（默认双向全链）。
+  1. 在 Admin 内导航进入（**无需手敲地址**）：`/admin/` → **Agents → Agent runs** 列表页顶部按钮 **「打开追溯链（SN-DEMO-001）」** → 追溯链页（默认双向全链）。
   2. 生成线（可选）：`.venv\Scripts\python.exe manage.py run_traceability SN-DEMO-001`
      → 新 run `needs_review` + 中文 summary。
 - **期望输出**：`found=True`、`root=SN-DEMO-001`、`nodes=31`、`edges=37`、`missing=[]`、`complete=True`；
@@ -141,12 +174,14 @@ start_threadlink_demo_reset.bat
 ### 段 5 — S5 工单齐套（1.5 min，只读）
 
 - **目标**：缺料 + 在途 + 替代项。
-- **操作**：`.venv\Scripts\python.exe manage.py kitting_check WO-001`；
-  或 Admin → WorkOrders → WO-001 detail「齐套摘要（只读）」面板。
-- **期望输出**：`工单 WO-001 / BOM BOM-001 / 数量 10.0000`、`齐套：否`、**缺料 13 项**；
-  重点两行：
-  - `PART-005: 需求 10 / 可用 0 / 缺口 10 / 在途 0 / 最晚到货 None / critical_shortage`
-  - `PART-006: 需求 20 / 可用 0 / 缺口 20 / 在途 200 / 最晚到货 2026-03-06 / insufficient=False`
+- **操作（网页内完成，无需命令行）**：Admin → WorkOrders → WO-001 detail 的
+  「Kitting summary (read-only)」面板；或 Admin 首页「Quick links → Open WorkOrder WO-001
+  (kitting / S5)」一键进入。
+- **备用（可选）**：`.venv\Scripts\python.exe manage.py kitting_check WO-001`。
+- **期望输出（面板）**：头部 `Work order WO-001 / BOM BOM-001 / Quantity 10.0000`、
+  `Ready: no - 13 shortage item(s)`，下接 13 行缺料表；重点两行：
+  - `PART-005`：`required 10 / available 0 / shortage 10 / in transit 0 / latest arrival - / risk critical_shortage`
+  - `PART-006`：`required 20 / available 0 / shortage 20 / in transit 200 / latest arrival 2026-03-06 / risk -`
 - **时间预算**：1.5 min。
 - **踩点**：`PART-006` 在途 200 来自采购单链路（`ordered_by` 边的 `metadata.quantity`）。
 - **来源**：`[dry-run]` 实测。
@@ -167,13 +202,15 @@ start_threadlink_demo_reset.bat
 ### 段 7 — S4 ECN 影响投影（1 min，只读）
 
 - **目标**：应用前的**零写**影响分析。
-- **操作**：`.venv\Scripts\python.exe manage.py ecn_impact ECN-001`；
-  或 Admin → ECNs → ECN-001 detail「影响投影（只读，D11-R2）」面板。
-- **期望输出**：
-  - `ECN ECN-001 / status=approved / effective=True / warnings=[]`
-  - `[bom_nodes] 1` → `BI-001`；`[inventory_lots] 1` → `LOT-DCDC-001`；
-    `[purchase_orders] 1` → `PO-001`；`[test_cases] 2` → `TC-001`、`TC-009`
-  - `[consistency] missing_affects_edge:test_case:TC-009`
+- **操作（网页内完成，无需命令行）**：Admin → ECNs → ECN-001 detail 的
+  「Impact projection (read-only)」面板；或 Admin 首页「Quick links → Open ECN ECN-001
+  (impact / S4)」一键进入。
+- **备用（可选）**：`.venv\Scripts\python.exe manage.py ecn_impact ECN-001`。
+- **期望输出（面板）**：头部 `ECN ECN-001 / status approved / effective date 2026-03-05`、
+  `Effective: yes; 4 affected item(s)`，下接影响面表（Category / Count / Affected items）：
+  - `bom_nodes` → 1 → `BI-001`；`inventory_lots` → 1 → `LOT-DCDC-001`；
+    `purchase_orders` → 1 → `PO-001`；`test_cases` → 2 → `TC-001, TC-009`
+  - 表尾 `Consistency: missing_affects_edge:test_case:TC-009`
 - **时间预算**：1 min。
 - **踩点**：分析**不改任何实体**；`consistency` 提示应用前缺一条 `affects` 边。
 - **来源**：`[dry-run]` 实测。
@@ -192,8 +229,8 @@ start_threadlink_demo_reset.bat
 
 - **目标**：人工确认/拒绝——「确认 = 决策，非橡皮图章」；补齐四值矩阵。
 - **操作**（Admin → **Agent runs**，顺序固定）：
-  1. 勾选 **run 6**（`bom_selection`）→ action「**批准**」。
-  2. 勾选 **run 8**（`requirement`）→ action「**拒绝**」。
+  1. 勾选 **run 6**（`bom_selection`）→ action「**批准**」→ 点 **Go** 后弹出确认框，点 **OK**。
+  2. 勾选 **run 8**（`requirement`）→ action「**拒绝**」→ 点 **Go** 后弹出确认框，点 **OK**。
   3. **run 7**（`traceability`）**保持 `needs_review`**（留作审计展示）。
 - **期望输出**：
   - run 6 approve → 消息「`#6 已批准：BOM BOM-002，3 项，2 条替代链接`」；

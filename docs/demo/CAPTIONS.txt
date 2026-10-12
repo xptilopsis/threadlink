@@ -1,0 +1,90 @@
+ThreadLink 演示录屏 · 字幕文本
+（仅文本；每行一条字幕，按段 1 → 9 顺序播放；以 docs/demo/RUNBOOK.md 为准）
+
+
+【段 1｜开场 · 只读状态速览】
+
+登录 Admin：直接运行start_threadlink_admin.bat
+脚本自动检查僵尸脚本，并在完成后再浏览器访问http://127.0.0.1:8000/admin/
+账号 admin，密码 demo-pass-2026
+打开审计队列AgentRun
+队列共 8 行，覆盖 bom_selection / requirement / traceability 三类 Agent
+状态矩阵：failed 1 (run5)、needs_review 3、success 4
+run 5 的 failed 是刻意的防幻觉样例——系统不隐藏失败。
+
+【段 2｜S1 客户邮件 → 需求卡（生成线）】
+
+进入 Documents
+点击 Add document
+填写相关信息
+上传客户的email文件
+点击 Save
+文件上传成功
+进入AgentRun 队列
+可以见到高亮的新增Document
+运行 Requirement Agent（需求卡智能体）
+访问LLM等待响应需要一定时间
+运行成功，5 张卡片进入待确认
+自动跳转至AgentRun 队列中的新增requirement
+每张卡 source_refs 指向本次上传的 Document（AC-002 / AC-003）
+人工核对（加速）
+人工核对无误，点击批准
+
+
+【段 3｜S2 BOM 选型 criteria 表单（生成线）】
+
+打开 BOM 选型表单（criteria）
+智能体根据卡片总结关键参数辅助选型
+人工二次核对，确认无误运行选型智能体
+引擎运行需要一定时间
+分数、价格、交期来自确定性引擎
+（core/selection.py）结果3项可选，推荐PART-002
+LLM仅负责报告
+人工核对后批准放行
+
+
+【段 4｜S3 追溯链（只读 + 生成线）】
+
+打开追溯链（SN-DEMO-001）
+追溯链页默认展示双向全链
+每个节点 source_refs 非空
+链覆盖需求 REQ-001…005、BOM-001、文档 DOC-001/003/005、采购 PO、ECN、库存批次、测试用例、Git 提交
+
+
+【段 5｜S5 工单齐套（只读，网页内完成）】
+
+打开WorkOrder工单
+查看WO-001 详情
+查看「Kitting summary (read-only)」面板
+结论：Ready: no — 13 shortage item(s)，下接 13 行缺料表
+自研引擎识别并给出库存风险
+
+
+【段 6｜S6 只读约束（只读）】
+
+进入Git repos / Git commits
+列表无 Add 按钮，detail 全字段只读
+
+
+【段 7｜S4 ECN 影响投影（只读，网页内完成）】
+
+进入ECNs
+查看ECN-001 详情
+查看「Impact projection (read-only)」面板
+结论：Effective: yes; 4 affected item(s)
+
+【段 8｜S4 ECN 应用（写，倒数第二段）】
+
+回到ECNs
+应用 ECN
+消息：ECN-001 已应用：新建边 1、补确认 0、写回 BI-001:PART-001→PART-002
+结果：BI-001.part 变为 PART-002；TraceLink 39 → 40（新增 TC-009 affects 边）
+
+【段 9｜S7 审计 + 决策线（写）】
+
+回到Agent runs
+批准run6 bom_selection
+run 7（traceability）保持 needs_review，留作审计展示。
+批准 run 8（requirement）
+自此，审计界面进入终态
+落档文件入库，感谢观看

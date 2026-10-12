@@ -4,7 +4,9 @@
 > `docs/interface_contract.md` 为权威；完整数据模型见 `docs/er_diagram.md`。
 >
 > **语法自检**：节点文本一律用 `"..."` 包裹，内部只用全角括号、不含双引号 / 分号；
-> `erDiagram` 关系名规范、注释行以 `%%` 开头且不与语法同行。**GitHub 端渲染确认列为 R3 前置动作。**
+> `erDiagram` 关系名规范、注释行以 `%%` 开头且不与语法同行；**节点 id 避免 Mermaid 保留字**
+> （`call` / `end` / `class` / `style` / `click` / `graph` / `direction` 等——图 3 曾用 `call` 触发
+> `CALLBACKNAME` 解析错误，已改 `invoke`）。**GitHub 端渲染确认列为 R3 前置动作。**
 
 ---
 
@@ -111,8 +113,8 @@ erDiagram
 ```mermaid
 flowchart TD
     input["输入：Document / 序列号 / 项目 criteria"] --> load["prompt 装载：system + user_template + schema"]
-    load --> call["call_json：provider 结构化输出"]
-    call --> pyd["Pydantic 校验：冻结 schema"]
+    load --> invoke["call_json：provider 结构化输出"]
+    invoke --> pyd["Pydantic 校验：冻结 schema"]
     pyd --> verify["引用核验：verify_references"]
     verify -->|通过| nr["AgentRun = needs_review"]
     verify -->|失败| failed["AgentRun = failed + invalid_references"]

@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 """D13-R1：演示库终态断言（配合 ``scripts/demo_reset.ps1``）。
 
-两种模式：
+三种模式：
 
+- ``--expect auto``（默认）：按当前 ``AgentRun`` 数自动判定 —— 5 → ``base``，8 → ``full``，其它 → 明确报错；
 - ``--expect base``：仅确定性 bootstrap 后（fixtures 5 条 AgentRun）；
 - ``--expect full``：三类真实调用各 1 条后（AgentRun=8，``needs_review`` 行 id=6/7/8）。
 
 断言内容：22 集合计数 + AgentRun 矩阵 + 关键不变量（``BI-001.part=PART-001``、
 ``ECN-001`` 未应用）。退出码：0 全过；1 有失败。
 
-用法：``python scripts/demo_terminal_assert.py --expect base``
+用法：``python scripts/demo_terminal_assert.py``（默认 auto）或 ``--expect full``。
 """
 
 from __future__ import annotations
@@ -97,11 +98,27 @@ FULL_NEEDS_REVIEW_IDS = {6: "bom_selection", 7: "traceability", 8: "requirement"
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="演示库终态断言")
-    parser.add_argument("--expect", choices=("base", "full"), default="base")
+    parser.add_argument(
+        "--expect",
+        choices=("auto", "base", "full"),
+        default="auto",
+        help="auto（默认）按当前 AgentRun 数判定：5→base / 8→full",
+    )
     args = parser.parse_args(argv)
 
+    mode = args.expect
+    if mode == "auto":
+        n = AgentRun.objects.count()
+        if n == 5:
+            mode = "base"
+        elif n == 8:
+            mode = "full"
+        else:
+            print(f"[FAIL] --expect auto 无法判定：AgentRun 数 = {n}（期望 5 或 8）")
+            return 1
+
     failures: list[str] = []
-    expected_agent_runs = 5 if args.expect == "base" else 8
+    expected_agent_runs = 5 if mode == "base" else 8
 
     for name, (model, expected) in EXPECTED_COUNTS.items():
         if name == "agent_runs":
@@ -123,14 +140,14 @@ def main(argv=None) -> int:
     matrix: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for run in AgentRun.objects.all():
         matrix[run.agent_name][run.status] += 1
-    expected_matrix = BASE_MATRIX if args.expect == "base" else FULL_MATRIX
+    expected_matrix = BASE_MATRIX if mode == "base" else FULL_MATRIX
     for agent, statuses in expected_matrix.items():
         for status, count in statuses.items():
             actual = matrix[agent][status]
             if actual != count:
                 failures.append(f"AgentRun[{agent}][{status}]: {actual} != {count}")
 
-    if args.expect == "full":
+    if mode == "full":
         for run_id, agent in FULL_NEEDS_REVIEW_IDS.items():
             run = AgentRun.objects.filter(pk=run_id).first()
             if run is None:
@@ -146,7 +163,7 @@ def main(argv=None) -> int:
         for item in failures:
             print(f"  - {item}")
         return 1
-    print(f"[OK] 终态断言全过（expect={args.expect}）：22 集合 + 矩阵 + 关键不变量")
+    print(f"[OK] 终态断言全过（expect={mode}）：22 集合 + 矩阵 + 关键不变量")
     return 0
 
 

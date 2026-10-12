@@ -9,82 +9,87 @@ chcp 65001 >nul
 ::             5) auto-open Edge at /admin/  6) cleanup on exit
 :: Usage   : start_threadlink_admin.bat
 :: Deps    : .venv created ; Microsoft Edge installed
+:: Note    : console text is ASCII only (cmd code-page safety). NO inline
+::           PowerShell here - port cleanup and PID lookup are delegated to
+::           scripts\admin_win.ps1 via `-File` (cmd mis-parses inline
+::           `-Command "... ( ... ) ... | ... { ... }"` strings).
 :: ============================================================================
 
-:: 看门狗分支：被 start 以 --watchdog <PID> 调用时进入，不执行主流程
+set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS%" set "PS=powershell"
+
+:: watchdog branch: invoked as `%~f0 --watchdog <PID>`; skip the main flow
 if "%~1"=="--watchdog" goto watchdog
 
 title Threadlink Dev Server
 cd /d C:\Users\Lenovo\Desktop\Threadlink\threadlink
 
 echo ============================================
-echo   Threadlink Django 开发服务器
+echo   Threadlink Django dev server
 echo ============================================
 echo.
 
-:: 激活虚拟环境
+:: activate venv
 if exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
-    echo [OK] 虚拟环境已激活
+    echo [OK] venv activated
 ) else (
-    echo [WARN] 未找到 .venv，请先运行: python -m venv .venv
+    echo [WARN] .venv not found; run: python -m venv .venv
     pause
     exit /b 1
 )
 
 echo.
-echo [1/4] 清理启动前的僵尸进程...
-call :kill_port_8000
-
-:: 获取本窗口 cmd 的 PID（此刻标题尚未被 runserver 修改），供看门狗判定窗口是否已关闭
+echo [1/4] preparing (clean port 8000 + resolve window PID) ...
+:: ONE PowerShell call does both port cleanup and PID lookup (avoids a second
+:: ~1.5s PowerShell cold start before runserver).
 set "SELF_PID="
-for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId" 2^>nul`) do set "SELF_PID=%%i"
+set "PIDFILE=%TEMP%\threadlink_self_pid.txt"
+if exist "%PIDFILE%" del "%PIDFILE%" >nul 2>&1
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\admin_win.ps1" -Action prepare -Port 8000 -Out "%PIDFILE%" 2>nul
+if exist "%PIDFILE%" for /f "usebackq tokens=*" %%i in ("%PIDFILE%") do set "SELF_PID=%%i"
+if exist "%PIDFILE%" del "%PIDFILE%" >nul 2>&1
 if not defined SELF_PID (
     for /f "tokens=2 delims=," %%i in ('tasklist /V /FI "WINDOWTITLE eq Threadlink Dev Server" /FO CSV /NH 2^>nul') do set "SELF_PID=%%~i"
 )
 
 if defined SELF_PID (
-    echo [2/4] 启动看门狗（关闭本窗口后自动清理僵尸进程）...
+    echo [2/4] starting watchdog, auto-cleanup after this window closes ...
     start "Threadlink Watchdog" /min cmd /c "%~f0 --watchdog %SELF_PID%"
 ) else (
-    echo [2/4] [WARN] 未能获取本窗口 PID，看门狗未启动（仍保留启动前/停止后清理）
+    echo [2/4] [WARN] could not resolve this window PID; watchdog not started
 )
 
-echo [3/4] 启动 Django 开发服务器...
-echo [4/4] 服务器就绪后自动用 Edge 打开 admin 页面
+echo [3/4] starting Django dev server ...
+echo [4/4] Edge will open /admin/ when ready
 echo.
-echo 访问地址:
-echo   http://127.0.0.1:8000/        - 主站点
-echo   http://127.0.0.1:8000/admin/  - 管理后台
+echo   http://127.0.0.1:8000/        - site
+echo   http://127.0.0.1:8000/admin/  - admin
 echo.
-echo 按 Ctrl+C 停止服务；直接关闭本窗口后看门狗会自动清理
+echo Press Ctrl+C to stop; closing this window triggers watchdog cleanup
 echo.
 
-:: 异步延迟 5 秒后用 Edge 打开 admin 页面
-:: 放在 runserver 之前，否则会被前台运行的服务器阻塞
-start "" /min cmd /c "timeout /t 5 /nobreak >nul && start msedge http://127.0.0.1:8000/admin/"
+:: wait, warm the server up (compile templates + prime static cache), then open Edge
+:: (async: must not block the foreground runserver below)
+start "Threadlink Warmer" /min "%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\admin_win.ps1" -Action open -Port 8000
 
-:: 前台运行服务器
-:: --noreload 关闭自动重载，减少 Windows 上关窗后残留的子进程
-python manage.py runserver 127.0.0.1:8000 --noreload
+:: run server in the foreground (--noreload: no orphaned children; --skip-checks: faster boot)
+python manage.py runserver 127.0.0.1:8000 --noreload --skip-checks
 
-:: ---------- 服务器正常退出（Ctrl+C）后清理 ----------
+:: ---------- cleanup after normal exit (Ctrl+C) ----------
 echo.
-echo 正在清理僵尸进程...
+echo cleaning up port 8000 ...
 call :kill_port_8000
-echo 服务已停止。
+echo stopped.
 pause
 exit /b 0
 
-:: ============ 子过程：清理占用 8000 端口的僵尸进程 ============
+:: ============ subroutine: kill zombie process on port 8000 ============
 :kill_port_8000
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do (
-    echo       结束僵尸进程 PID %%p
-    taskkill /F /PID %%p >nul 2>&1
-)
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\admin_win.ps1" -Action kill -Port 8000 2>nul
 exit /b 0
 
-:: ============ 看门狗：主窗口关闭后清理 8000 ============
+:: ============ watchdog: cleanup port 8000 after the main window closes ============
 :watchdog
 set "TARGET=%~2"
 if not defined TARGET exit /b 1
@@ -95,5 +100,5 @@ tasklist /FI "PID eq %TARGET%" /NH 2>nul | findstr /R /C:"[0-9]" >nul
 if errorlevel 1 goto wd_cleanup
 goto wd_loop
 :wd_cleanup
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\admin_win.ps1" -Action kill -Port 8000 2>nul
 exit /b 0

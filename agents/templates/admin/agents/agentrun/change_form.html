@@ -1,0 +1,29 @@
+{% extends "admin/change_form.html" %}
+
+{# Hide the top-right History button (audit page only). #}
+{% block object-tools-items %}{% endblock %}
+
+{% block content %}
+  {% if original %}
+  <div style="padding:8px 12px;border-radius:4px;margin-bottom:12px;border:1px solid #ffeeba;background:#fff3cd;color:#333;">
+    {% if original.status == 'success' %}
+      <b style="color:#333;">Approved</b> |
+      {% if original.agent_name == 'bom_selection' %}
+      <a class="button" href="/trace/serial/SN-DEMO-001/">Open trace chain (SN-DEMO-001)</a>
+
+      {% else %}
+      <a class="button" href="{{ bom_agent_home|default:'http://127.0.0.1:8000/agents/bom-selection/form/' }}">Open BOM agent</a>
+      {% endif %}
+    {% elif original.status == 'needs_review' %}
+      <b style="color:#333;">Pending approval</b> |
+      <a class="button" href="{% url 'admin:agents_agentrun_approve_now' original.pk %}">Approve</a>
+      {% if original.agent_name == 'bom_selection' %}
+      <a class="button" style="margin-left:8px;" href="/trace/serial/SN-DEMO-001/">Open trace chain (SN-DEMO-001)</a>
+      {% endif %}
+    {% else %}
+      <span style="color:#333;">Status: {{ original.get_status_display|default:original.status }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

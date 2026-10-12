@@ -58,7 +58,7 @@ def test_ecn_apply_action_error_not_500(admin, project, client, monkeypatch):
     client.force_login(admin)
     resp = _post_action(client, "core", "ecn", "apply_selected_ecn", [ecn.pk])
     assert resp.status_code == 200
-    assert "应用失败" in resp.content.decode()
+    assert "apply failed" in resp.content.decode()
 
 
 # --- AgentRun 派发 action 异常 ----------------------------------------------
@@ -74,4 +74,4 @@ def test_agentrun_action_error_not_500(admin, client, monkeypatch):
     client.force_login(admin)
     resp = _post_action(client, "agents", "agentrun", "approve_selected", [run.pk])
     assert resp.status_code == 200
-    assert "异常" in resp.content.decode()
+    assert "boom" in resp.content.decode()

@@ -159,7 +159,7 @@ def test_dispatch_bom_approve_creates_bom(seeded, client, project):
     response = _post_action(client, seeded, run, "approve_selected")
     assert response.status_code == 200
     content = response.content.decode()
-    assert "已批准" in content and "BOM" in content
+    assert "approved" in content and "BOM" in content
     run.refresh_from_db()
     assert run.status == "success"  # D6-R3：bom_selection approve 已实现（建 draft BOM）
 

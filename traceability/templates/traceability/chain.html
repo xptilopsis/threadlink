@@ -1,26 +1,56 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <title>追溯链 {{ payload.root }}</title>
-</head>
-<body>
-  <h1>追溯链：{{ payload.root }}</h1>
-  <p>found={{ payload.found|yesno:"true,false" }}　complete={{ payload.complete|yesno:"true,false" }}</p>
-  {% if payload.missing %}<p>missing: {{ payload.missing|join:", " }}</p>{% endif %}
+{% extends "admin/base_site.html" %}
+{% load i18n %}
 
-  <h2>节点（{{ payload.nodes|length }}）</h2>
-  <ul>
-    {% for node in payload.nodes %}
-    <li>depth={{ node.depth }} [{{ node.node_type }}] {{ node.node_id }} — {{ node.label }}{% if node.relation_type %}（rel={{ node.relation_type }}）{% endif %}</li>
-    {% endfor %}
-  </ul>
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate "Home" %}</a>
+  &rsaquo; Trace chain: {{ payload.root }}
+</div>
+{% endblock %}
 
-  <h2>边（{{ payload.edges|length }}）</h2>
-  <ul>
-    {% for edge in payload.edges %}
-    <li>{{ edge.from_node_id }} →{{ edge.relation_type }}→ {{ edge.to_node_id }}</li>
-    {% endfor %}
-  </ul>
-</body>
-</html>
+{% block content %}
+<div id="content-main">
+  <div class="module" style="padding:10px 12px;margin-bottom:14px;">
+    <p style="margin:0;">found={{ payload.found|yesno:"true,false" }} &nbsp; complete={{ payload.complete|yesno:"true,false" }}</p>
+    {% if payload.missing %}<p style="margin:6px 0 0;">missing: {{ payload.missing|join:", " }}</p>{% endif %}
+  </div>
+
+  <div class="module">
+    <h2>Nodes ({{ payload.nodes|length }})</h2>
+    <table style="width:100%;">
+      <thead>
+        <tr><th>depth</th><th>type</th><th>id</th><th>label</th><th>relation</th></tr>
+      </thead>
+      <tbody>
+        {% for node in payload.nodes %}
+        <tr>
+          <td>{{ node.depth }}</td>
+          <td>{{ node.node_type }}</td>
+          <td>{{ node.node_id }}</td>
+          <td>{{ node.label }}</td>
+          <td>{{ node.relation_type }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="module">
+    <h2>Edges ({{ payload.edges|length }})</h2>
+    <table style="width:100%;">
+      <thead>
+        <tr><th>from</th><th>relation</th><th>to</th></tr>
+      </thead>
+      <tbody>
+        {% for edge in payload.edges %}
+        <tr>
+          <td>{{ edge.from_node_id }}</td>
+          <td>{{ edge.relation_type }}</td>
+          <td>{{ edge.to_node_id }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -49,6 +49,23 @@ def _affects(project, number="ECN-001"):
     )
 
 
+def test_ecn_admin_impact_panel_renders_scope(seeded, project, client):
+    ecn = _ecn(project)
+    client.force_login(seeded)
+    resp = client.get(f"/admin/core/ecn/{ecn.pk}/change/")
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    assert "Impact projection" in body
+    assert "ECN <b>ECN-001</b>" in body
+    assert "Effective: <b>yes</b>" in body
+    assert "Affected items" in body
+    assert "BI-001" in body
+    assert "LOT-DCDC-001" in body
+    assert "PO-001" in body
+    assert "TC-001" in body and "TC-009" in body
+    assert "missing_affects_edge:test_case:TC-009" in body
+
+
 # --- GT-ECN-001 ------------------------------------------------------------
 def test_gt_ecn_001_impact_scope(seeded, project):
     result = project_ecn_impact(_ecn(project), as_of_date=ASOF)

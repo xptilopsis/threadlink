@@ -474,7 +474,12 @@ def test_workorder_admin_kitting_panel_ok(seeded, project, client):
     client.force_login(seeded)
     resp = client.get(f"/admin/core/workorder/{wo.pk}/change/")
     assert resp.status_code == 200
-    assert "齐套摘要" in resp.content.decode()
+    body = resp.content.decode()
+    assert "Kitting summary" in body
+    assert "Work order <b>WO-001</b>" in body
+    assert "Ready: <b>no</b> - 13 shortage item(s)" in body
+    assert "PART-005" in body and "PART-006" in body
+    assert "critical_shortage" in body
 
 
 def test_workorder_admin_panel_error_not_500(seeded, project, client, monkeypatch):

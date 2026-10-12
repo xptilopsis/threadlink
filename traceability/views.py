@@ -10,12 +10,17 @@
 默认渲染 HTML；``?format=json`` 返回与链负载逐字段一致的 JSON。
 """
 
+from django.contrib import admin
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 
 from core.models import InventoryLot
-from traceability.chain import VALID_DIRECTIONS, build_trace_chain, serial_not_found_payload
+from traceability.chain import (
+    VALID_DIRECTIONS,
+    build_trace_chain,
+    serial_not_found_payload,
+)
 
 
 @login_required
@@ -50,4 +55,6 @@ def serial_trace(request, sn):
 
     if request.GET.get("format") == "json":
         return JsonResponse(payload)
-    return render(request, "traceability/chain.html", {"payload": payload})
+    context = admin.site.each_context(request)
+    context.update({"title": f"Trace chain: {payload.get('root')}", "payload": payload})
+    return render(request, "traceability/chain.html", context)

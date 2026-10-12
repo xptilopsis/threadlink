@@ -1,0 +1,15 @@
+{% extends "admin/index.html" %}
+
+{% block content %}
+  <div class="module" style="margin-bottom:14px;">
+    <h2 style="margin-bottom:12px;">Quick links</h2>
+    <div style="margin:0;">
+      <div style="margin:0 0 12px;"><a class="button" style="display:inline-block;line-height:1.6;padding:6px 14px;white-space:nowrap;" href="/agents/bom-selection/form/">Open BOM selection form (criteria)</a></div>
+      <div style="margin:0 0 12px;"><a class="button" style="display:inline-block;line-height:1.6;padding:6px 14px;white-space:nowrap;" href="/trace/serial/SN-DEMO-001/">Open trace chain (SN-DEMO-001)</a></div>
+      <div style="margin:0 0 12px;"><a class="button" style="display:inline-block;line-height:1.6;padding:6px 14px;white-space:nowrap;" href="/admin/core/workorder/?q=WO-001">Open WorkOrder WO-001 (kitting / S5)</a></div>
+      <div style="margin:0 0 12px;"><a class="button" style="display:inline-block;line-height:1.6;padding:6px 14px;white-space:nowrap;" href="/admin/core/ecn/?q=ECN-001">Open ECN ECN-001 (impact / S4)</a></div>
+      <div style="margin:0;"><a class="button" style="display:inline-block;line-height:1.6;padding:6px 14px;white-space:nowrap;" href="{% url 'admin:agents_agentrun_changelist' %}">Agent runs audit queue</a></div>
+    </div>
+  </div>
+  {{ block.super }}
+{% endblock %}

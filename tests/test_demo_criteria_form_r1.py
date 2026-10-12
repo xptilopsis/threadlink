@@ -43,7 +43,7 @@ def test_get_renders_form(seeded, client):
     response = client.get(FORM_URL)
     assert response.status_code == 200
     html = response.content.decode()
-    assert "运行选型" in html
+    assert "Run selection" in html
     assert 'name="voltage_min"' in html
 
 
@@ -96,7 +96,7 @@ def test_post_unknown_project(seeded, client):
     client.force_login(seeded)
     response = client.post(FORM_URL, {**VALID_POST, "project": "NOPE"})
     assert response.status_code == 200
-    assert "project 不存在" in response.content.decode()
+    assert "project not found" in response.content.decode()
 
 
 def test_command_full_flag(seeded, monkeypatch):

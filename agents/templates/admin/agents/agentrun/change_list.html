@@ -1,0 +1,46 @@
+{% extends "admin/change_list.html" %}
+
+{% block content %}
+  <p style="margin:0 0 10px;">
+    <a class="button" href="{{ bom_agent_home }}">Open BOM selection form (criteria)</a>
+    <a class="button" href="/trace/serial/SN-DEMO-001/">Open trace chain (SN-DEMO-001)</a>
+  </p>
+  {% if pending_documents %}
+  <div class="module" style="margin-bottom:14px;">
+    <h2>Pending documents (requirement extraction)</h2>
+    <p style="margin:4px 0 8px;color:var(--body-quiet-color,#666);">
+      Yellow row = a document added within 10 minutes and pending; you can run "Extract requirements" without prior approval.
+      After success the button becomes "Extracted - click to open" and links to the AgentRun detail page.
+    </p>
+    <table style="width:100%;border-collapse:collapse;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-color,#ddd);">ID</th>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-color,#ddd);">Title</th>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-color,#ddd);">Type</th>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-color,#ddd);">Uploaded</th>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid var(--border-color,#ddd);">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in pending_documents %}
+        <tr style="background:#fff3cd;color:#333;">
+          <td style="padding:6px;color:#333;">{{ item.doc.doc_no }}</td>
+          <td style="padding:6px;color:#333;">{{ item.doc.title }}</td>
+          <td style="padding:6px;color:#333;">{{ item.doc.get_doc_type_display }}</td>
+          <td style="padding:6px;color:#333;">{{ item.doc.created_at }}</td>
+          <td style="padding:6px;">
+            {% if item.run_id %}
+              <a class="button" href="{% url 'admin:agents_agentrun_change' item.run_id %}">Extracted - click to open</a>
+            {% else %}
+              <a class="button" href="{{ item.extract_url }}">Extract requirements</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

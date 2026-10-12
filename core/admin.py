@@ -1,12 +1,15 @@
 import hashlib
 import time
 from pathlib import Path
+from typing import ClassVar
 
 from django import forms
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.urls import reverse
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.utils.text import get_valid_filename
 
 from config.settings import resolve_doc_path
@@ -50,7 +53,80 @@ WRITABLE_BY_ROLE = {
 }
 
 
-class RoleWritePermissionMixin:
+class InlineActionsMixin:
+    """D13：把 changelist 的批量 Action 下拉替换为每行「操作」列。
+
+    - 关闭顶部批量下拉（``actions=None`` + ``get_actions`` 空）；
+    - 每行渲染中文行内操作（编辑 / 删除 / 子类 ``inline_actions``），链接用主题链接色；
+    - 有副作用的操作带 ``data-confirm``，由 ``admin_inline_actions.js`` 弹窗（含「不再提醒」）。
+    """
+
+    tl_inline_edit = True
+    tl_inline_delete = True
+
+    class Media:
+        css: ClassVar[dict[str, tuple[str, ...]]] = {
+            "all": ("core/admin_inline_actions.css",)
+        }
+        js = ("core/admin_inline_actions.js",)
+
+    def get_list_display(self, request):
+        fields = list(super().get_list_display(request))
+        if "_inline_actions" not in fields:
+            fields.append("_inline_actions")
+        return tuple(fields)
+
+    def inline_actions(self, obj):
+        """子类覆盖：返回 ``[(label, action_name[, key[, danger]]), ...]``（行内 POST 提交该 action）。"""
+        return []
+
+    def _url_link(self, label, url, danger=False):
+        cls = "tl-inline-action" + (" tl-danger" if danger else "")
+        return format_html('<a class="{}" href="{}">{}</a>', cls, url, label)
+
+    def _post_link(self, label, action_name, obj, key, danger=False):
+        cls = "tl-inline-action" + (" tl-danger" if danger else "")
+        return format_html(
+            '<a class="{}" href="#" data-confirm="{}" data-key="{}"'
+            ' data-action-name="{}" data-object-id="{}">{}</a>',
+            cls,
+            f"Confirm {label}?",
+            key,
+            action_name,
+            obj.pk,
+            label,
+        )
+
+    @admin.display(description="Actions")
+    def _inline_actions(self, obj):
+        opts = self.model._meta
+        links = []
+        if self.tl_inline_edit:
+            links.append(
+                self._url_link(
+                    "Edit",
+                    reverse(
+                        f"admin:{opts.app_label}_{opts.model_name}_change", args=[obj.pk]
+                    ),
+                )
+            )
+        for spec in self.inline_actions(obj):
+            label, action_name = spec[0], spec[1]
+            key = spec[2] if len(spec) > 2 else f"{action_name}:{opts.label}"
+            danger = spec[3] if len(spec) > 3 else False
+            links.append(self._post_link(label, action_name, obj, key, danger))
+        if self.tl_inline_delete:
+            links.append(
+                self._post_link(
+                    "Delete", "delete_selected", obj, f"delete:{opts.label}", danger=True
+                )
+            )
+        return format_html(
+            '<span class="tl-inline-actions">{}</span>', mark_safe(" ".join(links))
+        )
+
+
+class RoleWritePermissionMixin(InlineActionsMixin):
     """D11-R3：按 ``role`` 限定 Admin **写**路径（add/change/delete）；**读路径不受限**。
 
     - ``is_superuser`` / ``role == "admin"`` → 全权（Django superuser 语义保留）；
@@ -106,7 +182,7 @@ class PartAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_filter = ("lifecycle_status", "category")
     inlines = [PartParamInline]
 
-    @admin.display(description="供应商数")
+    @admin.display(description="Suppliers")
     def supplier_count(self, obj):
         return obj.supplier_parts.count()
 
@@ -131,7 +207,7 @@ except admin.sites.NotRegistered:
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
+class UserAdmin(InlineActionsMixin, BaseUserAdmin):
     list_display = ("username", "email", "role", "is_staff", "is_active")
     list_filter = BaseUserAdmin.list_filter + ("role",)
 
@@ -279,7 +355,7 @@ class BomAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     search_fields = ("bom_no", "name")
     readonly_fields = ("bom_tree",)
 
-    @admin.display(description="BOM 树（只读）")
+    @admin.display(description="BOM tree (read-only)")
     def bom_tree(self, obj):
         if obj is None:
             return "-"
@@ -308,7 +384,7 @@ class InventoryLotAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     list_filter = ("status",)
     search_fields = ("serial_number", "part__part_number")
 
-    @admin.display(description="来源采购单")
+    @admin.display(description="Source purchase order")
     def sourced_po(self, obj):
         from traceability.models import TraceLink
 
@@ -348,8 +424,10 @@ class WorkOrderAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     search_fields = ("code",)
     readonly_fields = ("kitting_panel",)
 
-    @admin.display(description="齐套摘要（只读，D11-R1）")
+    @admin.display(description="Kitting summary (read-only)")
     def kitting_panel(self, obj):
+        """S5 工单齐套：在 Admin 详情页内呈现完整缺料/在途/替代/风险（无需命令行）。"""
+
         from core.kitting import analyze_kitting
 
         if obj is None or obj.pk is None:
@@ -358,12 +436,65 @@ class WorkOrderAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
             result = analyze_kitting(obj)
         except Exception as exc:  # noqa: BLE001 —— 面板不得 500
             return f"计算失败：{exc}"
-        if result["ready"]:
-            return "齐套：全部满足"
-        details = "、".join(
-            f"{s['part_id']}（缺 {s['shortage_qty']}）" for s in result["shortages"]
+
+        header = format_html(
+            "<div style='margin-bottom:6px;'>Work order <b>{}</b> / BOM <b>{}</b>"
+            " / Quantity <b>{}</b></div>",
+            result["work_order"],
+            result["bom_no"],
+            result["quantity"],
         )
-        return f"缺料 {len(result['shortages'])} 项：{details}"
+        if result["ready"]:
+            return format_html(
+                "{}<div>Ready: <b>yes</b> - all requirements met</div>",
+                header,
+            )
+
+        td = mark_safe("style='padding:4px 8px;border-top:1px solid #eee;white-space:nowrap;'")
+        th = mark_safe(
+            "style='padding:4px 8px;text-align:left;border-bottom:1px solid #ccc;"
+            "white-space:nowrap;'"
+        )
+        rows = []
+        for s in result["shortages"]:
+            alternatives = ", ".join(
+                "{} (available {} / in transit {})".format(
+                    a["part_id"], a["available_qty"], a["in_transit_qty"]
+                )
+                for a in s["alternatives"]
+            )
+            rows.append(
+                format_html(
+                    "<tr><td {0}>{1}</td><td {0}>{2}</td><td {0}>{3}</td>"
+                    "<td {0}>{4}</td><td {0}>{5}</td><td {0}>{6}</td>"
+                    "<td {0}>{7}</td><td {0}>{8}</td></tr>",
+                    td,
+                    s["part_id"],
+                    s["required_qty"],
+                    s["available_qty"],
+                    s["shortage_qty"],
+                    s["in_transit_qty"],
+                    s["latest_arrival_date"] or "-",
+                    alternatives or "-",
+                    ", ".join(s["risk_flags"]) or "-",
+                )
+            )
+        table = format_html(
+            "<table style='border-collapse:collapse;'>"
+            "<thead><tr>"
+            "<th {0}>Part</th><th {0}>Required</th><th {0}>Available</th>"
+            "<th {0}>Shortage</th><th {0}>In transit</th><th {0}>Latest arrival</th>"
+            "<th {0}>Alternatives</th><th {0}>Risk</th>"
+            "</tr></thead><tbody>{1}</tbody></table>",
+            th,
+            mark_safe("".join(str(row) for row in rows)),
+        )
+        return format_html(
+            "{}<div style='margin-bottom:8px;'>Ready: <b>no</b> - {} shortage item(s)</div>{}",
+            header,
+            len(result["shortages"]),
+            table,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -386,8 +517,13 @@ class ECNAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
     readonly_fields = ("impact_panel",)
     actions = ("apply_selected_ecn",)
 
-    @admin.display(description="影响投影（只读，D11-R2）")
+    def inline_actions(self, obj):
+        return [("Apply ECN", "apply_selected_ecn", "ecn-apply", True)]
+
+    @admin.display(description="Impact projection (read-only)")
     def impact_panel(self, obj):
+        """S4 ECN 影响投影：在 Admin 详情页内呈现完整影响面（零写，无需命令行）。"""
+
         from core.ecn import project_ecn_impact
 
         if obj is None or obj.pk is None:
@@ -396,15 +532,75 @@ class ECNAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
             result = project_ecn_impact(obj)
         except Exception as exc:  # noqa: BLE001 —— 面板不得 500
             return f"分析失败：{exc}"
+
+        header = format_html(
+            "<div style='margin-bottom:6px;'>ECN <b>{}</b> / status <b>{}</b>"
+            " / effective date <b>{}</b> / as of <b>{}</b></div>",
+            result["ecn"],
+            result["status"],
+            result["effective_date"] or "-",
+            result["as_of_date"],
+        )
         if not result["effective"]:
-            return f"未生效（{'；'.join(result['warnings'])}）"
-        counts = {key: len(value) for key, value in result["impacts"].items()}
-        return (
-            f"生效；影响 {counts}；unresolved={len(result['unresolved'])}；"
-            f"consistency={result['consistency'] or '无'}"
+            return format_html(
+                "{}<div>Effective: <b>no</b> - {}</div>",
+                header,
+                "; ".join(result["warnings"]) or "not effective",
+            )
+
+        td = mark_safe("style='padding:4px 8px;border-top:1px solid #eee;white-space:nowrap;'")
+        th = mark_safe(
+            "style='padding:4px 8px;text-align:left;border-bottom:1px solid #ccc;"
+            "white-space:nowrap;'"
+        )
+        rows = []
+        for category, entries in result["impacts"].items():
+            items = ", ".join(d["affected_id"] for d in entries)
+            rows.append(
+                format_html(
+                    "<tr><td {0}>{1}</td><td {0}>{2}</td><td {0}>{3}</td></tr>",
+                    td,
+                    category,
+                    len(entries),
+                    items or "-",
+                )
+            )
+        table = format_html(
+            "<table style='border-collapse:collapse;'>"
+            "<thead><tr>"
+            "<th {0}>Category</th><th {0}>Count</th><th {0}>Affected items</th>"
+            "</tr></thead><tbody>{1}</tbody></table>",
+            th,
+            mark_safe("".join(str(row) for row in rows)),
+        )
+        summary = format_html(
+            "<div style='margin-bottom:8px;'>Effective: <b>yes</b>; {} affected item(s)</div>",
+            sum(len(v) for v in result["impacts"].values()),
+        )
+        tail = ""
+        if result["unresolved"]:
+            unresolved = ", ".join(
+                "{}:{}".format(u["affected_type"], u["affected_id"])
+                for u in result["unresolved"]
+            )
+            tail += str(
+                format_html("<div style='margin-top:8px;'>Unresolved: {}</div>", unresolved)
+            )
+        tail += str(
+            format_html(
+                "<div style='margin-top:4px;'>Consistency: {}</div>",
+                ", ".join(result["consistency"]) or "none",
+            )
+        )
+        return format_html(
+            "{}{}{}{}",
+            header,
+            summary,
+            table,
+            mark_safe(tail),
         )
 
-    @admin.action(description="应用 ECN（写回 BomItem.part + 确认 affects 边）")
+    @admin.action(description="Apply ECN (write BomItem.part + confirm affects edge)")
     def apply_selected_ecn(self, request, queryset):
         from core.ecn import EcnApplyError, apply_ecn
 
@@ -413,24 +609,24 @@ class ECNAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
                 result = apply_ecn(ecn, request.user)
             except EcnApplyError as exc:
                 self.message_user(
-                    request, f"{ecn.ecn_number} 跳过：{exc}", level=messages.WARNING
+                    request, f"{ecn.ecn_number} skipped: {exc}", level=messages.WARNING
                 )
                 continue
             except Exception as exc:  # noqa: BLE001 —— 异常以 message 呈现，不 500
                 self.message_user(
-                    request, f"{ecn.ecn_number} 应用失败：{exc}", level=messages.ERROR
+                    request, f"{ecn.ecn_number} apply failed: {exc}", level=messages.ERROR
                 )
                 continue
             rewritten = (
-                "、".join(
-                    f"{r['bom_item']}:{r['from']}→{r['to']}" for r in result["rewritten"]
+                ", ".join(
+                    f"{r['bom_item']}:{r['from']}->{r['to']}" for r in result["rewritten"]
                 )
-                or "无"
+                or "none"
             )
             self.message_user(
                 request,
-                f"{ecn.ecn_number} 已应用：新建边 {result['created_edges']}、"
-                f"补确认 {result['confirmed_edges']}、写回 {rewritten}",
+                f"{ecn.ecn_number} applied: created edges {result['created_edges']}, "
+                f"confirmed {result['confirmed_edges']}, wrote back {rewritten}",
             )
 
 
@@ -445,8 +641,11 @@ class ECNImpactAdmin(RoleWritePermissionMixin, admin.ModelAdmin):
 # ---------------------------------------------------------------------------
 
 
-class ReadOnlyModelAdmin(admin.ModelAdmin):
+class ReadOnlyModelAdmin(InlineActionsMixin, admin.ModelAdmin):
     """列表 / 详情可见，写入路径全关（add/change/delete → False）。"""
+
+    tl_inline_edit = False
+    tl_inline_delete = False
 
     def get_readonly_fields(self, request, obj=None):
         return [field.name for field in self.model._meta.fields]
@@ -481,7 +680,7 @@ class DocumentAdminForm(forms.ModelForm):
 
 
 @admin.register(Document)
-class DocumentAdmin(admin.ModelAdmin):
+class DocumentAdmin(InlineActionsMixin, admin.ModelAdmin):
     """D5-R2 §2：文档**入库**开放（add），**创建后不可改**（change/delete → False）。
 
     - 上传文件写 ``documents/uploads/<timestamp>-<safe_name>``；
@@ -541,7 +740,10 @@ class DocumentAdmin(admin.ModelAdmin):
 
     actions = ("run_requirement_agent_action",)
 
-    @admin.action(description="运行 Requirement Agent（生成需求卡）")
+    def inline_actions(self, obj):
+        return [("Run requirement extraction", "run_requirement_agent_action", "doc-extract", False)]
+
+    @admin.action(description="Run Requirement Agent (extract cards)")
     def run_requirement_agent_action(self, request, queryset):
         from agents.requirement import run_requirement_agent
 
@@ -550,17 +752,17 @@ class DocumentAdmin(admin.ModelAdmin):
                 summary = run_requirement_agent(document.project, document, request.user)
             except Exception as exc:  # noqa: BLE001
                 self.message_user(
-                    request, f"{document.doc_no}：运行失败——{exc}", level=messages.ERROR
+                    request, f"{document.doc_no}: run failed - {exc}", level=messages.ERROR
                 )
                 continue
             if summary.get("ok"):
                 self.message_user(
-                    request, f"{document.doc_no}：{summary['cards']} 张卡片进入待确认"
+                    request, f"{document.doc_no}: {summary['cards']} cards pending review"
                 )
             else:
                 self.message_user(
                     request,
-                    f"{document.doc_no}：引用核验失败（{len(summary.get('invalid_references', []))} 条）",
+                    f"{document.doc_no}: reference check failed ({len(summary.get('invalid_references', []))})",
                     level=messages.WARNING,
                 )
 

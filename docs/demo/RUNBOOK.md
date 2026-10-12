@@ -114,6 +114,9 @@ start_threadlink_admin.bat
 - **纯机械执行**（只敲命令 / 点按钮 / 等 live 返回）实测**约 3 min**。
 - 两者为不同口径：预算**不要求「慢慢做」**；操作熟练时机械部分远快于预算，余下时间用于讲解。
 
+> **§2.4 后注（非确定性解说素材）**：批准会把候选的替代建议固化为 `TraceLink`；条数取决于模型建议，
+> **以当下输出为准**——把它当讲解素材，而非 bug。
+
 ---
 
 ## 3. 15 分钟分段脚本
@@ -287,7 +290,7 @@ start_threadlink_admin.bat
 
 | run | agent | 动作 | 期望输出 | 来源 |
 | --- | --- | --- | --- | --- |
-| 6 | `bom_selection` | **approve** | `BOM-002` / `version=v0.1-sel-6` / `status=draft` / `items=3` / `substitute_group=SG-SEL-6` / `links=2`；run 6 → `success` | `[dry-run]` |
+| 6 | `bom_selection` | **approve** | `BOM-002` / `version=v0.1-sel-6` / `status=draft` / `items=3` / `substitute_group=SG-SEL-6` / `links=0–3`（随 LLM 的 replaces 建议，以实时输出为准；**数量非固定，见 §2.4 后注**）；run 6 → `success` | `[dry-run]` |
 | 8 | `requirement` | **reject** | status → `rejected`、`confirmed_by=admin`；落档 `<日期>-human-rejected-8.md` | `[dry-run]` |
 | 7 | `traceability` | **保留** | 仍 `needs_review` | `[dry-run]` |
 
@@ -303,6 +306,10 @@ start_threadlink_admin.bat
 
 > `[dry-run]` 本批沙箱实测：`approve_bom_selection(run 6)` → `{'bom_no': 'BOM-002', 'items': 3, 'links': 2}`；
 > `reject(run 8)` → `rejected`；`run 7` 保持 `needs_review`；`TraceLink 39 → 41`。实测后已按备份还原 prod DB（见 §7 偏差）。
+>
+> **注（结构性行为，非固定数值）**：其中 `links` 随每次重建的 LLM `replaces` 建议数变化
+> （D6-R3 实测 3，D13 彩排实测 2）；本记录证明「批准写入 `replaces` 边」的**结构性行为**，**非固定数值**。
+> 故 §5 决策线表以 `links=0–3` 表述、以实时输出为准。
 
 ---
 

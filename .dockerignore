@@ -1,0 +1,9 @@
+# D14-R2：镜像构建排除项（.data / uploads 经 compose 卷提供，不进镜像）
+.git
+.venv
+db.sqlite3
+.data
+documents/uploads
+__pycache__
+*.pyc
+.pytest_cache

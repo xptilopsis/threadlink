@@ -91,6 +91,33 @@
 - GitPython
 - pdfplumber
 
+## 部署（Docker Compose）
+
+> **演示级部署**（ADR-0018）。容器内**不跑 pytest、不验证 LLM / live**；GT 分层与宿主回归仍以 SQLite 运行（ADR-0008 既定）。**SQLite 开发路径不变**——不设 `DATABASE_URL`（或设为 sqlite 值）时行为与之前完全一致。
+
+**前置**：Docker Desktop（含 Compose v2）已启动；宿主 `.env` 提供 `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`（缺省均为 `threadlink`）、`DJANGO_DEBUG` / `DJANGO_ALLOWED_HOSTS`。
+
+**三条命令**
+
+```powershell
+docker compose up -d --build        # 构建并启动 db + web（首次构建 5–15 分钟属正常）
+powershell -File scripts\compose_bootstrap.ps1   # 迁移 → 超管 → 种子 → 仓库校验 → sync(0/0/0) → 22 集合断言
+powershell -File scripts\compose_smoke.ps1       # 认证态 /admin/ 200 + 追溯链 200 且 31 nodes / 37 edges
+```
+
+访问：`http://127.0.0.1:8000/`。端口 8000 被占用时，把 `docker-compose.yml` 的 `ports` 改为 `8001:8000`。
+
+**冒烟判据**：`compose_smoke.ps1` 输出 `SMOKE PASS` 且退出码 0；`sync_git_repo` 打印 `added=0 updated=0 missing=0`（跨环境 SHA 一致性实证：Windows 宿主生成 / Linux 容器读取）。
+
+**`down` 与 `down -v` 的区别**
+
+| 命令 | 效果 |
+| --- | --- |
+| `docker compose down` | 停止并删除容器/网络，**保留 `pgdata` 卷** → 下次 `up -d` 数据仍在（22 集合可复断） |
+| `docker compose down -v` | 额外**删除卷**（数据库 + `.data` 绑定目录内容不删，但 PG 数据清空）→ 需重跑 `compose_bootstrap.ps1` |
+
+**范围声明**：容器路径**不执行** `pytest`、**不验证** LLM/live；`DATABASE_URL` 在 compose 中被**强制**为容器内 Postgres（不透传宿主 sqlite 值）。生产化（gunicorn / 静态文件 / HTTPS / CI）见 ADR-0018 §7（→ v2）。
+
 ## 本地开发与启动脚本
 
 项目提供 4 个 Windows 批处理启动器，双击或命令行运行即可（均 `chcp 65001` UTF-8、自动进入项目根目录）：

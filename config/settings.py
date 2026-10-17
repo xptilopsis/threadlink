@@ -81,12 +81,31 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# D14-R2：DATABASE_URL 解析（仅 postgresql:// | postgres:// 覆盖；缺省/其他 → SQLite 零变化）
+# 零新依赖：urllib.parse 手写解析。compose 中 web 强制注入 postgresql://…（不透传宿主 sqlite 值）。
+_DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+if _DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    from urllib.parse import parse_qs, unquote, urlparse
+
+    _url = urlparse(_DATABASE_URL)
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": unquote(_url.path.lstrip("/")),
+            "USER": unquote(_url.username or ""),
+            "PASSWORD": unquote(_url.password or ""),
+            "HOST": _url.hostname or "",
+            "PORT": str(_url.port or ""),
+            "OPTIONS": {k: v[0] for k, v in parse_qs(_url.query).items()},
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_USER_MODEL = 'core.User'
 

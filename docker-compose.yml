@@ -1,0 +1,40 @@
+# D14-R2：演示级 Docker Compose 拓扑（ADR-0018）
+# 范围声明：容器内不跑 pytest、不验证 LLM/live；GT 分层仍以 SQLite 运行（ADR-0008 既定）。
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-threadlink}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-threadlink}
+      POSTGRES_DB: ${POSTGRES_DB:-threadlink}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-threadlink} -d ${POSTGRES_DB:-threadlink}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    # 宿主 8000 被占用时，把左侧改为 8001（8001:8000）并同步 README/脚本说明
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-only-not-a-secret}
+      # 强制覆盖为容器内 Postgres —— 不得透传宿主 .env 的 sqlite 值
+      DATABASE_URL: postgresql://threadlink:threadlink@db:5432/threadlink
+      GIT_READONLY_ROOTS: .data
+    volumes:
+      # .data 与上传目录经卷提供（跨环境 SHA 一致性 + 上传产物持久化），不进镜像
+      - ./.data:/app/.data
+      - ./documents/uploads:/app/documents/uploads
+    command: python manage.py runserver 0.0.0.0:8000
+
+volumes:
+  pgdata:

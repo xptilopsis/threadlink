@@ -12,6 +12,9 @@ Host 白名单：Django 的 test Client 请求 Host 为 'testserver'，容器 AL
 import os
 import sys
 
+# 容器内代码根；脚本从 /tmp 执行时须显式加入（SMOKE_APP_ROOT 可覆盖，默认 /app）
+sys.path.insert(0, os.environ.get("SMOKE_APP_ROOT", "/app"))
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
 import django  # noqa: E402

@@ -7,6 +7,9 @@
 Host 白名单：Django 的 test Client 请求 Host 为 'testserver'，容器 ALLOWED_HOSTS 未必包含，
 故在 settings 层就地补齐 —— **不依赖** compose/exec 传 `-e DJANGO_ALLOWED_HOSTS`
 （避免污染生产 compose 环境、避免传参漏配）。
+
+断言口径（v4）：每条独立、独立诊断（失败打印 `[断言名] 期望=X 实际=Y`），不聚合。
+DB 版追溯链无 LLM → `summary=None` 是契约 Optional 的正确值（D4-R3），显式断言为 None。
 """
 
 import os
@@ -80,57 +83,122 @@ COLLECTIONS = [
 ]
 
 
+def check(name, ok, expected, actual, detail=""):
+    """单条断言：独立打印 PASS/FAIL；失败返回诊断串，成功返回 None。"""
+    if ok:
+        print(f"  [PASS] {name} (actual={actual!r})")
+        return None
+    msg = f"[{name}] 期望={expected} 实际={actual!r}"
+    if detail:
+        msg += f" | {detail}"
+    print(f"  [FAIL] {msg}")
+    return msg
+
+
 def main() -> int:
     failures = []
 
-    print("== collections ==")
+    print("== collections (each > 0) ==")
     for model in COLLECTIONS:
+        name = model.__name__
         try:
             count = model.objects.count()
         except Exception as exc:  # noqa: BLE001
-            failures.append(f"{model.__name__}: query error {exc}")
+            msg = f"[collection:{name}] 期望>0 实际=query_error:{exc}"
+            print(f"  [FAIL] {msg}")
+            failures.append(msg)
             continue
-        print(f"  {model.__name__:24s} {count}")
-        if count <= 0:
-            failures.append(f"{model.__name__}: expected >0, got {count}")
-    print(f"COLLECTIONS {len(COLLECTIONS)}")
+        msg = check(f"collection:{name}", count > 0, ">0", count)
+        if msg:
+            failures.append(msg)
 
+    msg = check("collections:count", len(COLLECTIONS) == 22, 22, len(COLLECTIONS))
+    if msg:
+        failures.append(msg)
+
+    print("== admin ==")
     client = None
     user = get_user_model().objects.filter(username="admin").first()
     if user is None:
-        failures.append("admin user missing")
+        msg = "[admin:user] 期望=admin 存在 实际=missing"
+        print(f"  [FAIL] {msg}")
+        failures.append(msg)
     else:
         client = Client()
         client.force_login(user)
 
     if client is not None:
-        checks = [
-            ("/admin/", 200, None),
-            ("/trace/serial/SN-DEMO-001/?format=json", 200, {"nodes": 31, "edges": 37}),
-        ]
-        for url, want_status, extra in checks:
-            resp = client.get(url)
-            body = resp.content.decode("utf-8", "replace")
-            ok = resp.status_code == want_status
-            detail = ""
-            if extra is not None:
-                try:
-                    data = resp.json()
-                except Exception:  # noqa: BLE001
-                    data = {}
-                    ok = False
-                detail = f" nodes={data.get('nodes')} edges={data.get('edges')}"
-                for key, expected in extra.items():
-                    if data.get(key) != expected:
-                        ok = False
-            print(f"HTTP {resp.status_code} {url}{detail} -> {'OK' if ok else 'FAIL'}")
-            if not ok:
-                failures.append(
-                    f"{url}: status={resp.status_code} body[:200]={body[:200]!r}"
-                )
+        resp = client.get("/admin/")
+        body = resp.content.decode("utf-8", "replace")
+        msg = check("admin:status", resp.status_code == 200, 200, resp.status_code, body[:200])
+        if msg:
+            failures.append(msg)
+        markers = [m for m in ("Traceback", "DisallowedHost") if m in body]
+        msg = check(
+            "admin:no_error_page",
+            not markers,
+            "无 Traceback/DisallowedHost",
+            markers or "clean",
+            body[:200] if markers else "",
+        )
+        if msg:
+            failures.append(msg)
+
+        print("== trace chain (db-backed) ==")
+        resp = client.get("/trace/serial/SN-DEMO-001/?format=json")
+        body = resp.content.decode("utf-8", "replace")
+        msg = check("trace:status", resp.status_code == 200, 200, resp.status_code, body[:200])
+        if msg:
+            failures.append(msg)
+
+        data = None
+        try:
+            data = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            msg = f"[trace:json] 期望=JSON 实际=parse_error:{exc} | body={body[:200]!r}"
+            print(f"  [FAIL] {msg}")
+            failures.append(msg)
+
+        if data is not None:
+            msg = check("trace:found", data.get("found") is True, True, data.get("found"))
+            if msg:
+                failures.append(msg)
+            msg = check("trace:complete", data.get("complete") is True, True, data.get("complete"))
+            if msg:
+                failures.append(msg)
+            msg = check("trace:missing", data.get("missing") == [], [], data.get("missing"))
+            if msg:
+                failures.append(msg)
+
+            nodes = data.get("nodes") or []
+            edges = data.get("edges") or []
+            msg = check("trace:nodes_len", len(nodes) == 31, 31, len(nodes))
+            if msg:
+                failures.append(msg)
+            msg = check("trace:edges_len", len(edges) == 37, 37, len(edges))
+            if msg:
+                failures.append(msg)
+
+            # GT-TRACE-004：每个节点 source_refs 非空（逐节点断言）
+            empty_refs = [
+                i for i, node in enumerate(nodes) if not (node.get("source_refs") or [])
+            ]
+            msg = check(
+                "trace:node_source_refs",
+                not empty_refs,
+                "每节点 source_refs 非空",
+                f"empty_indices={empty_refs[:10]} (total {len(empty_refs)})",
+            )
+            if msg:
+                failures.append(msg)
+
+            # DB 版无 LLM：summary 必须显式为 None（契约 Optional，D4-R3）
+            msg = check("trace:summary_none", data.get("summary") is None, None, data.get("summary"))
+            if msg:
+                failures.append(msg)
 
     if failures:
-        print("SMOKE FAIL")
+        print(f"SMOKE FAIL ({len(failures)} assertion(s))")
         for item in failures:
             print(" -", item)
         return 1

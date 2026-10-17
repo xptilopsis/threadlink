@@ -82,3 +82,28 @@ ThreadLink 开发与验收路径基于 SQLite（`db.sqlite3`，仓库根）。�
 - **SQLite 开发路径不变**：不设 `DATABASE_URL`（或设为 sqlite 值）时行为与 D14-R1 完全一致；
 - **GT 分层不变**：`@pytest.mark.live` / `transport` 与 `not live` 套件仍在宿主运行；
 - 演示恢复脚本（`scripts/demo_reset.ps1`）与容器路径**相互独立**：容器路径用 `compose_bootstrap.ps1`。
+---
+
+## 9. 镜像内容安全（D14-R2 修补）
+
+- **根因**：初版 `.dockerignore` 未排除 `.env`，而 `Dockerfile` 使用 `COPY . .` → **宿主 `.env`（含 `DJANGO_SECRET_KEY`、`OPENAI_API_KEY` 等）被烤入镜像层**。虽为演示级，仍属密钥外泄面。
+- **修复动作**：`.dockerignore` 增加 `.env`、`.env.*`（覆盖 `.env.local` 等变体），并以 `!.env.example` 保留示例文件供参考；`.data` / `documents/uploads` / `db.sqlite3` 等原有排除项不变。
+- **重建验证方式**：
+  ```powershell
+  docker compose up -d --build     # 重建应用 .dockerignore（pgdata 卷留存，无需重新 bootstrap）
+  docker compose exec web sh -c "ls -a /app | grep '^.env$' || echo NO_ENV_IN_IMAGE"
+  ```
+  期望输出 `NO_ENV_IN_IMAGE`（即 `/app/.env` 不存在）。
+- **纪律**：后续任何新增**密钥类文件**（如 `.env.production`、凭据 JSON）**必须同步**更新 `.dockerignore`。
+
+## 10. smoke 脚本 Host 白名单（D14-R2 修补）
+
+- **问题**：`django.test.Client` 请求 Host 为 `testserver`，而容器 `ALLOWED_HOSTS`（由 `DJANGO_ALLOWED_HOSTS` 透传，缺省仅 `127.0.0.1,localhost`）**不含** `testserver` → 冒烟会在 `DisallowedHost` 处失败；初版 `shell -c` 内联代码亦**无法**依赖外部 `-e DJANGO_ALLOWED_HOSTS` 传参（易漏配、难诊断）。
+- **选择**：在断言体（`scripts/_smoke_body.py`）内，于 `django.setup()` 之后、构造 `Client` 之前**就地补齐**：
+  ```python
+  from django.conf import settings
+  if "testserver" not in settings.ALLOWED_HOSTS:
+      settings.ALLOWED_HOSTS = list(settings.ALLOWED_HOSTS) + ["testserver"]
+  ```
+- **为何不用 env 变量传递**：① 不依赖 Compose / `exec` 传参（少一个易漏环节）；② **不污染生产 compose 环境**（`ALLOWED_HOSTS` 不因测试而放宽）；③ 断言体文件化（`docker compose cp` 入容器执行），避免 PowerShell → docker → `manage.py shell -c` 的多层引号转义。
+- **可维护性**：内联 Python 抽为 `scripts/_smoke_body.py`，`compose_smoke.ps1` 仅做 `cp` + `exec`；失败时打印 `status_code` 与响应前 200 字符（可诊断，不隐藏原因）。

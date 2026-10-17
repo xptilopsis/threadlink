@@ -7,3 +7,7 @@ documents/uploads
 __pycache__
 *.pyc
 .pytest_cache
+# D14-R2 修补：密钥类文件绝不入镜像（初版曾被 COPY . . 烤入 → 安全问题）
+.env
+.env.*
+!.env.example
